@@ -60,6 +60,9 @@ importers:
         specifier: ^3.23.8
         version: 3.25.76
     devDependencies:
+      '@repo/eslint-config':
+        specifier: workspace:*
+        version: link:../../packages/eslint-config
       '@repo/typescript-config':
         specifier: workspace:*
         version: link:../../packages/typescript-config
@@ -87,6 +90,9 @@ importers:
       '@types/uuid':
         specifier: ^10.0.0
         version: 10.0.0
+      eslint:
+        specifier: ^9.39.1
+        version: 9.39.1(jiti@2.7.0)
       prisma:
         specifier: ^5.14.0
         version: 5.22.0

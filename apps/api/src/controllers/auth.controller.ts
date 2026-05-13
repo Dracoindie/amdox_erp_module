@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt';
-import { ok, created, badRequest, unauthorized, unprocessable } from '../utils/response';
+import { ok, badRequest, unauthorized, unprocessable } from '../utils/response';
 import { logger } from '../utils/logger';
 
 // ── Validation Schemas ────────────────────────────────────────────────────────

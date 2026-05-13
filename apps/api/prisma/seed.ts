@@ -31,7 +31,7 @@ async function main() {
     update: {},
     create: { name: 'Human Resources' },
   });
-  const finance = await prisma.department.upsert({
+  await prisma.department.upsert({
     where: { name: 'Finance' },
     update: {},
     create: { name: 'Finance' },
