@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amdox-erp-frontend
+  namespace: amdox-production
+  labels:
+    app: amdox-erp-frontend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: amdox-erp-frontend
+  template:
+    metadata:
+      labels:
+        app: amdox-erp-frontend
+    spec:
+      containers:
+      - name: frontend
+        image: amdox-erp-suite/web:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 15
+          periodSeconds: 5

@@ -1,0 +1,467 @@
+// Prisma Schema — AMX-ERP-2026
+// Run: pnpm db:generate  →  pnpm db:migrate
+// Studio: pnpm db:studio
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum Role {
+  SUPER_ADMIN
+  HR_MANAGER
+  FINANCE_MANAGER
+  INVENTORY_MANAGER
+  SALES_REP
+  EMPLOYEE
+  READ_ONLY
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  ONBOARDING
+  TERMINATED
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum LeaveType {
+  ANNUAL
+  SICK
+  UNPAID
+  MATERNITY
+  PATERNITY
+}
+
+enum PayrollStatus {
+  DRAFT
+  CONFIRMED
+  PAID
+}
+
+enum StockMovementType {
+  IN
+  OUT
+  ADJUSTMENT
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  ISSUED
+  RECEIVED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  VOID
+}
+
+enum ExpenseStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  REIMBURSED
+}
+
+enum LeadStage {
+  PROSPECT
+  QUALIFIED
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum JournalEntryStatus {
+  PENDING
+  POSTED
+  VOID
+}
+
+// ─── Identity & Auth ─────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         Role     @default(READ_ONLY)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  employee    Employee?
+  sessions    Session[]
+  auditLogs   AuditLog[]
+
+  @@map("users")
+}
+
+model Session {
+  id               String   @id @default(uuid())
+  userId           String   @map("user_id")
+  refreshTokenHash String   @map("refresh_token_hash")
+  expiresAt        DateTime @map("expires_at")
+  ip               String?
+  userAgent        String?  @map("user_agent")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// ─── HR ──────────────────────────────────────────────────────────────────────
+
+model Department {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+
+  employees Employee[]
+  manager   Employee? @relation("DepartmentManager", fields: [managerId], references: [id])
+  managerId String?   @map("manager_id")
+
+  @@map("departments")
+}
+
+model Employee {
+  id           String         @id @default(uuid())
+  userId       String?        @unique @map("user_id")
+  name         String
+  email        String         @unique
+  phone        String?
+  departmentId String?        @map("department_id")
+  designation  String?
+  grossSalary  Float          @map("gross_salary")
+  joinDate     DateTime       @map("join_date")
+  status       EmployeeStatus @default(ACTIVE)
+  isArchived   Boolean        @default(false) @map("is_archived")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  user            User?           @relation(fields: [userId], references: [id])
+  department      Department?     @relation(fields: [departmentId], references: [id])
+  managedDepts    Department[]    @relation("DepartmentManager")
+  attendances     Attendance[]
+  leaveRequests   LeaveRequest[]
+  payslips        Payslip[]
+
+  @@map("employees")
+}
+
+model Attendance {
+  id         String    @id @default(uuid())
+  employeeId String    @map("employee_id")
+  clockIn    DateTime  @map("clock_in")
+  clockOut   DateTime? @map("clock_out")
+  date       DateTime  @db.Date
+  hoursWorked Float?   @map("hours_worked")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("attendance")
+}
+
+model LeaveRequest {
+  id          String      @id @default(uuid())
+  employeeId  String      @map("employee_id")
+  type        LeaveType
+  fromDate    DateTime    @map("from_date") @db.Date
+  toDate      DateTime    @map("to_date") @db.Date
+  reason      String?
+  status      LeaveStatus @default(PENDING)
+  approvedBy  String?     @map("approved_by")
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("leave_requests")
+}
+
+model PayrollRun {
+  id          String        @id @default(uuid())
+  periodStart DateTime      @map("period_start") @db.Date
+  periodEnd   DateTime      @map("period_end") @db.Date
+  status      PayrollStatus @default(DRAFT)
+  runBy       String        @map("run_by")
+  totalGross  Float         @map("total_gross")
+  totalTaxes  Float         @map("total_taxes")
+  totalNet    Float         @map("total_net")
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  payslips Payslip[]
+
+  @@map("payroll_runs")
+}
+
+model Payslip {
+  id          String   @id @default(uuid())
+  payrollRunId String  @map("payroll_run_id")
+  employeeId  String   @map("employee_id")
+  gross       Float
+  taxes       Float
+  insurance   Float
+  net         Float
+  pdfUrl      String?  @map("pdf_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id])
+  employee   Employee   @relation(fields: [employeeId], references: [id])
+
+  @@map("payslips")
+}
+
+// ─── Inventory / SCM ─────────────────────────────────────────────────────────
+
+model Product {
+  id            String  @id @default(uuid())
+  sku           String  @unique
+  name          String
+  category      String?
+  unitPrice     Float   @map("unit_price")
+  reorderLevel  Int     @default(10) @map("reorder_level")
+  unit          String  @default("piece")
+  isActive      Boolean @default(true) @map("is_active")
+
+  stockLevels    StockLevel[]
+  stockMovements StockMovement[]
+
+  @@map("products")
+}
+
+model Warehouse {
+  id        String @id @default(uuid())
+  name      String
+  location  String?
+
+  stockLevels StockLevel[]
+
+  @@map("warehouses")
+}
+
+model StockLevel {
+  id          String   @id @default(uuid())
+  productId   String   @map("product_id")
+  warehouseId String   @map("warehouse_id")
+  quantity    Int      @default(0)
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  product   Product   @relation(fields: [productId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+
+  @@unique([productId, warehouseId])
+  @@map("stock_levels")
+}
+
+model StockMovement {
+  id          String            @id @default(uuid())
+  productId   String            @map("product_id")
+  type        StockMovementType
+  quantity    Int
+  refId       String?           @map("ref_id")
+  refType     String?           @map("ref_type")
+  note        String?
+  performedBy String?           @map("performed_by")
+  createdAt   DateTime          @default(now()) @map("created_at")
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("stock_movements")
+}
+
+model Supplier {
+  id             String @id @default(uuid())
+  name           String
+  email          String?
+  phone          String?
+  leadTimeDays   Int?   @map("lead_time_days")
+  paymentTerms   String? @map("payment_terms")
+
+  purchaseOrders PurchaseOrder[]
+
+  @@map("suppliers")
+}
+
+model PurchaseOrder {
+  id          String              @id @default(uuid())
+  supplierId  String              @map("supplier_id")
+  status      PurchaseOrderStatus @default(DRAFT)
+  description String?
+  subtotal    Float               @default(0)
+  tax         Float               @default(0)
+  total       Float               @default(0)
+  createdBy   String              @map("created_by")
+  approvedBy  String?             @map("approved_by")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+
+  @@map("purchase_orders")
+}
+
+// ─── Finance ─────────────────────────────────────────────────────────────────
+
+model Account {
+  id       String  @id @default(uuid())
+  code     String  @unique
+  name     String
+  type     String  // asset | liability | equity | income | expense
+  isActive Boolean @default(true) @map("is_active")
+
+  journalLines JournalLine[]
+
+  @@map("accounts")
+}
+
+model JournalEntry {
+  id          String             @id @default(uuid())
+  date        DateTime           @db.Date
+  description String
+  status      JournalEntryStatus @default(PENDING)
+  createdBy   String             @map("created_by")
+  totalDebit  Float              @map("total_debit")
+  totalCredit Float              @map("total_credit")
+  createdAt   DateTime           @default(now()) @map("created_at")
+
+  lines JournalLine[]
+
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id       String @id @default(uuid())
+  entryId  String @map("entry_id")
+  accountId String @map("account_id")
+  debit    Float  @default(0)
+  credit   Float  @default(0)
+  memo     String?
+
+  entry   JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  account Account      @relation(fields: [accountId], references: [id])
+
+  @@map("journal_lines")
+}
+
+model Invoice {
+  id         String        @id @default(uuid())
+  customerId String        @map("customer_id")
+  number     String        @unique
+  subtotal   Float         @default(0)
+  tax        Float         @default(0)
+  total      Float         @default(0)
+  status     InvoiceStatus @default(DRAFT)
+  dueDate    DateTime?     @map("due_date") @db.Date
+  pdfUrl     String?       @map("pdf_url")
+  createdAt  DateTime      @default(now()) @map("created_at")
+  updatedAt  DateTime      @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@map("invoices")
+}
+
+model Expense {
+  id          String        @id @default(uuid())
+  category    String
+  amount      Float
+  description String?
+  status      ExpenseStatus @default(SUBMITTED)
+  submittedBy String        @map("submitted_by")
+  approvedBy  String?       @map("approved_by")
+  receiptUrl  String?       @map("receipt_url")
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  @@map("expenses")
+}
+
+// ─── CRM ─────────────────────────────────────────────────────────────────────
+
+model Customer {
+  id         String   @id @default(uuid())
+  name       String
+  email      String?  @unique
+  phone      String?
+  company    String?
+  assignedTo String?  @map("assigned_to")
+  tags       String[] @default([])
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  leads        Lead[]
+  interactions Interaction[]
+  invoices     Invoice[]
+
+  @@map("customers")
+}
+
+model Lead {
+  id              String    @id @default(uuid())
+  customerId      String    @map("customer_id")
+  stage           LeadStage @default(PROSPECT)
+  value           Float     @default(0)
+  expectedClose   DateTime? @map("expected_close") @db.Date
+  assignedTo      String?   @map("assigned_to")
+  notes           String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("leads")
+}
+
+model Interaction {
+  id          String   @id @default(uuid())
+  customerId  String   @map("customer_id")
+  type        String   // call | email | meeting | note
+  note        String?
+  performedBy String   @map("performed_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("interactions")
+}
+
+// ─── Platform ────────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  type      String
+  title     String
+  body      String?
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("notifications")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  action    String
+  entity    String
+  entityId  String?  @map("entity_id")
+  payload   Json?
+  ip        String?
+  timestamp DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}

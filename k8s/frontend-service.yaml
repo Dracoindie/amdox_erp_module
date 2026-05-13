@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: amdox-erp-frontend-service
+  namespace: amdox-production
+spec:
+  type: ClusterIP
+  selector:
+    app: amdox-erp-frontend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3000

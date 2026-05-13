@@ -1,0 +1,73 @@
+# AMX-ERP-2026 — Local Development Stack
+# Usage: docker compose up -d
+#
+# Services:
+#   postgres  → port 5432 (main relational DB)
+#   redis     → port 6379 (session cache, rate limiting)
+#   api       → port 4000 (Node.js + Express backend)
+#   web       → port 3000 (Next.js frontend via pnpm dev)
+#
+# Run migrations after first start:
+#   docker compose exec api pnpm db:migrate
+#   docker compose exec api pnpm db:seed
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: amx_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: amdox
+      POSTGRES_PASSWORD: amdox_dev_password
+      POSTGRES_DB: amdox_erp
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U amdox -d amdox_erp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: amx_redis
+    restart: unless-stopped
+    command: redis-server --requirepass amdox_redis_password
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "amdox_redis_password", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: amx_api
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      DATABASE_URL: postgresql://amdox:amdox_dev_password@postgres:5432/amdox_erp
+      REDIS_URL: redis://:amdox_redis_password@redis:6379
+      JWT_ACCESS_SECRET: dev-access-secret-replace-in-prod
+      JWT_REFRESH_SECRET: dev-refresh-secret-replace-in-prod
+      FRONTEND_URL: http://localhost:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+
+volumes:
+  postgres_data:
+  redis_data:

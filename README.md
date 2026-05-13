@@ -1,159 +1,122 @@
-# Turborepo starter
+# AMX-ERP-2026 — Amdox Technology ERP Suite
 
-This Turborepo starter is maintained by the Turborepo core team.
+> **Modern, modular Enterprise Resource Planning** built on Next.js 16, Node.js + Express, PostgreSQL, and Redis.
 
-## Using this example
+[![CI/CD](https://github.com/amdox/amdox-erp-suite/actions/workflows/ci.yml/badge.svg)](https://github.com/amdox/amdox-erp-suite/actions)
 
-Run the following command:
+---
 
-```sh
-npx create-turbo@latest
+## 🏗️ Monorepo Structure
+
+```
+amdox-erp-suite/
+├── apps/
+│   ├── web/          # Next.js 16 + React 19 + Tailwind CSS v4 (frontend)
+│   └── api/          # Node.js + Express + Prisma (REST API backend)
+├── packages/
+│   ├── ui/           # Shared component library
+│   ├── types/        # Shared TypeScript types
+│   ├── eslint-config/
+│   └── typescript-config/
+├── k8s/              # Kubernetes manifests
+├── docker-compose.yml
+└── turbo.json
 ```
 
-## What's inside?
+## ✅ Implemented Modules
 
-This Turborepo includes the following packages/apps:
+| Module | Route | Status |
+|---|---|---|
+| Dashboard | `/` | ✅ Live |
+| Financial Ledger | `/finance` | ✅ Live |
+| HR & Payroll | `/hr` | ✅ Live |
+| Supply Chain | `/scm` | ✅ Live |
+| CRM & Sales | `/crm` | ✅ Live |
+| Business Intelligence | `/bi` | ✅ Live |
+| Settings | `/settings` | ✅ Live |
+| Login (API-wired) | `/login` | ✅ Live |
+| REST API | `localhost:4000` | ✅ Scaffolded |
 
-### Apps and Packages
+## 🚀 Getting Started
 
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
+### Prerequisites
+- Node.js >= 22
+- pnpm >= 9
+- Docker Desktop
 
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo build
+### 1. Install Dependencies
+```bash
+pnpm install
 ```
 
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo build
-pnpm dlx turbo build
-pnpm exec turbo build
+### 2. Start Database + Redis (Docker)
+```bash
+docker compose up -d postgres redis
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo build --filter=docs
+### 3. Set Up Environment
+```bash
+cp apps/api/.env.example apps/api/.env
+# Edit .env with your DATABASE_URL and secrets
 ```
 
-Without global `turbo`:
-
-```sh
-npx turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
+### 4. Run Migrations + Seed
+```bash
+pnpm --filter api run db:generate
+pnpm --filter api run db:migrate
+pnpm --filter api run db:seed
+# Admin: admin@amdox.com / Admin@1234
 ```
 
-### Develop
+### 5. Start Dev Servers
+```bash
+# Terminal 1 — Frontend (port 3000)
+pnpm --filter web dev
 
-To develop all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo dev
+# Terminal 2 — API (port 4000)
+pnpm --filter api dev
 ```
 
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo dev
-pnpm exec turbo dev
-pnpm exec turbo dev
+### Or: Start Everything with Docker Compose
+```bash
+docker compose up
 ```
 
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+## 🔑 API Auth
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo dev --filter=web
+All API endpoints (except `/health` and `/api/v1/auth/login`) require:
+```
+Authorization: Bearer <access_token>
 ```
 
-Without global `turbo`:
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/v1/auth/login` | POST | Returns access token + sets refresh cookie |
+| `/api/v1/auth/logout` | POST | Clears session |
+| `/api/v1/auth/refresh` | POST | Issues new access token from cookie |
+| `/api/v1/auth/me` | GET | Current user profile |
 
-```sh
-npx turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-```
+## 🧩 Tech Stack
 
-### Remote Caching
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js 16, React 19, TypeScript 5.9 |
+| Styling | Tailwind CSS v4 |
+| State | Zustand v4 |
+| Charts | Recharts v2 |
+| API | Node.js + Express 4 |
+| ORM | Prisma 5 |
+| Auth | JWT (15 min access + 7d refresh) |
+| DB | PostgreSQL 16 |
+| Cache | Redis 7 |
+| Monorepo | Turborepo + pnpm |
+| Container | Docker + Kubernetes |
+| CI/CD | GitHub Actions |
 
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
+## 🗂️ Phase Roadmap
 
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-pnpm exec turbo login
-pnpm exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-pnpm exec turbo link
-pnpm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+- **Phase 1** ✅ — All frontend modules, upgraded dashboard, CRM, Settings
+- **Phase 2** ✅ — Node.js API, Prisma schema, auth, all controllers + routes, Docker Compose, wired login
+- **Phase 3** 🔜 — PDF export (payslips/invoices), email notifications, Sentry
+- **Phase 4** 🔜 — Python FastAPI analytics, AI demand forecasting integration
+- **Phase 5** 🔜 — Production k8s deploy, load testing, monitoring
