@@ -53,7 +53,7 @@ export default function ForgotPasswordPage() {
               <div>
                 <p className="font-semibold text-emerald-800">Check your email</p>
                 <p className="mt-1 text-sm text-emerald-700">
-                  If <strong>{email}</strong> is registered, you'll receive a reset link shortly.
+                  If <strong>{email}</strong> is registered, you&apos;ll receive a reset link shortly.
                 </p>
               </div>
             </div>
