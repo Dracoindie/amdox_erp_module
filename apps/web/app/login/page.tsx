@@ -2,9 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Lock, Mail, Building2, Loader2, AlertCircle } from 'lucide-react';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+import api from '../../lib/axios';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,27 +20,17 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${API_URL}/api/v1/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',          // include cookies (refresh token)
-        body: JSON.stringify({ email, password }),
-      });
+      const { data } = await api.post('/auth/login', { email, password });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.message || 'Login failed. Please check your credentials.');
-        return;
-      }
-
-      // Store access token — will be sent as Bearer on each API call
       localStorage.setItem('amx_access_token', data.data.accessToken);
       localStorage.setItem('amx_user', JSON.stringify(data.data.user));
-
       router.push('/');
-    } catch {
-      setError('Cannot reach the API server. Make sure the backend is running on port 4000.');
+    } catch (err: any) {
+      if (err.response?.data?.message) {
+        setError(err.response.data.message);
+      } else {
+        setError('Cannot reach the API server. Make sure the backend is running on port 4000.');
+      }
     } finally {
       setLoading(false);
     }
@@ -54,8 +44,8 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-12 sm:px-6 lg:px-8 relative overflow-hidden">
       {/* Decorative Orbs */}
-      <div className="absolute top-[-10%] left-[-10%] w-96 h-96 rounded-full bg-[#ff5a00] opacity-10 blur-[120px] pointer-events-none"></div>
-      <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 rounded-full bg-[#ff5a00] opacity-5 blur-[100px] pointer-events-none"></div>
+      <div className="absolute top-[-10%] left-[-10%] w-96 h-96 rounded-full bg-[#ff5a00] opacity-10 blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 rounded-full bg-[#ff5a00] opacity-5 blur-[100px] pointer-events-none" />
 
       <div className="w-full max-w-md space-y-8 rounded-3xl bg-white p-10 shadow-2xl border border-slate-100 relative z-10">
 
@@ -134,11 +124,21 @@ export default function LoginPage() {
             />
           </div>
 
+          {/* Forgot password */}
+          <div className="flex justify-end">
+            <Link
+              href="/login/forgot-password"
+              className="text-xs font-medium text-[#ff5a00] hover:text-orange-700 transition-colors"
+            >
+              Forgot password?
+            </Link>
+          </div>
+
           {/* Submit */}
           <button
             type="submit"
             disabled={loading}
-            className="group relative mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#ff5a00] to-orange-600 px-4 py-3.5 text-sm font-bold tracking-wide text-white shadow-lg shadow-orange-500/20 hover:shadow-orange-500/40 hover:from-orange-500 hover:to-orange-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff5a00] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="group relative mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#ff5a00] to-orange-600 px-4 py-3.5 text-sm font-bold tracking-wide text-white shadow-lg shadow-orange-500/20 hover:shadow-orange-500/40 hover:from-orange-500 hover:to-orange-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff5a00] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading
               ? <><Loader2 className="h-5 w-5 animate-spin" /> Authenticating...</>
@@ -154,8 +154,7 @@ export default function LoginPage() {
             <p className="flex justify-between"><span>Password:</span> <code className="font-mono text-[#ff5a00] font-bold">Admin@1234</code></p>
           </div>
         </div>
-
       </div>
     </div>
   );
-}
+}

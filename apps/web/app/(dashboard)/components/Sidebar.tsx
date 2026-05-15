@@ -31,14 +31,14 @@ export function Sidebar() {
   };
 
   return (
-    <div className="flex shrink-0 h-full w-64 flex-col bg-white text-slate-900 border-r border-slate-200 relative z-20 shadow-lg">
+    <div className="flex shrink-0 h-full w-64 flex-col bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-r border-slate-200 dark:border-slate-700 relative z-20 shadow-lg">
       {/* Logo */}
-      <div className="flex h-16 items-center gap-3 border-b border-slate-200 px-5 bg-slate-50">
+      <div className="flex h-16 items-center gap-3 border-b border-slate-200 dark:border-slate-700 px-5 bg-slate-50 dark:bg-slate-800/50">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#ff5a00] to-orange-600 shadow-sm shadow-orange-500/20">
           <Building2 className="h-5 w-5 text-white" />
         </div>
         <div>
-          <p className="text-sm font-extrabold tracking-tight leading-none text-slate-900">AMDOX <span className="text-[#ff5a00]">ERP</span></p>
+          <p className="text-sm font-extrabold tracking-tight leading-none text-slate-900 dark:text-white">AMDOX <span className="text-[#ff5a00]">ERP</span></p>
           <p className="text-[10px] text-slate-500 font-medium leading-none mt-1 uppercase tracking-wider">AMX-2026</p>
         </div>
       </div>
@@ -56,8 +56,8 @@ export function Sidebar() {
               href={item.href}
               className={`group flex items-center rounded-xl px-3 py-3 text-sm font-semibold transition-all duration-300 ${
                 active
-                  ? 'bg-orange-50 text-[#ff5a00] border-l-2 border-[#ff5a00]'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border-l-2 border-transparent'
+                  ? 'bg-orange-50 dark:bg-orange-500/10 text-[#ff5a00] border-l-2 border-[#ff5a00]'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white border-l-2 border-transparent'
               }`}
             >
               <item.icon
@@ -72,21 +72,21 @@ export function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="border-t border-slate-200 bg-slate-50 p-4">
+      <div className="border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-600 shadow-inner border border-slate-300">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-200 dark:bg-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 shadow-inner border border-slate-300 dark:border-slate-600">
               AD
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-bold text-slate-900">Admin User</p>
+              <p className="truncate text-sm font-bold text-slate-900 dark:text-white">Admin User</p>
               <p className="truncate text-[10px] font-medium text-[#ff5a00] uppercase tracking-wider">Super Admin</p>
             </div>
           </div>
           <button 
             onClick={handleSignOut}
             title="Sign Out"
-            className="p-2 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors"
+            className="p-2 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
           >
             <LogOut className="h-4 w-4" />
           </button>

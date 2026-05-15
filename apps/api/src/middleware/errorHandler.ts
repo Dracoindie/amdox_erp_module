@@ -13,6 +13,13 @@ export function errorHandler(
     body: req.body,
   });
 
+  if ((err as any).code === 'EBADCSRFTOKEN') {
+    return res.status(403).json({
+      success: false,
+      message: 'Invalid CSRF token',
+    });
+  }
+
   // Never leak stack traces to the client
   res.status(500).json({
     success: false,

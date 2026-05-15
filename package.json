@@ -11,6 +11,7 @@
     "lint": "turbo lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo check-types",
+    "test": "turbo test",
     "clean": "turbo clean"
   },
   "devDependencies": {

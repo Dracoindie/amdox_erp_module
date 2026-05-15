@@ -2,6 +2,8 @@
 
 @source "../../packages/ui";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-amdox-orange: #ff5a00;
   --color-amdox-dark: #09090b;

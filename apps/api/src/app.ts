@@ -36,7 +36,7 @@ app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'CSRF-Token', 'X-CSRF-Token'],
 }));
 
 // Global rate limit
@@ -58,6 +58,18 @@ app.use(cookieParser());
 app.use(morgan('combined', {
   stream: { write: (msg) => logger.info(msg.trim()) },
 }));
+
+// ─── CSRF Protection ──────────────────────────────────────────────────────────
+
+import csurf from 'csurf';
+const csrfProtection = csurf({ cookie: { httpOnly: true, secure: process.env.NODE_ENV === 'production' } });
+
+// Apply CSRF to all routes after cookie parser
+app.use(csrfProtection);
+
+app.get('/api/v1/csrf-token', (req, res) => {
+  res.json({ success: true, data: { csrfToken: req.csrfToken() } });
+});
 
 // ─── Root Route ───────────────────────────────────────────────────────────────
 
