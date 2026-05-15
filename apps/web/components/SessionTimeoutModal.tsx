@@ -21,7 +21,7 @@ export function SessionTimeoutModal({ onStayLoggedIn, onLogout, secondsRemaining
         </div>
         <h2 className="text-xl font-bold text-slate-900">Session Expiring Soon</h2>
         <p className="mt-2 text-sm text-slate-500">
-          You'll be automatically logged out in{' '}
+          You&apos;ll be automatically logged out in{' '}
           <span className="font-bold text-amber-600">
             {mins > 0 ? `${mins}m ` : ''}{secs}s
           </span>{' '}
