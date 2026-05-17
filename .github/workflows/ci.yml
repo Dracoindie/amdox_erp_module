@@ -25,11 +25,11 @@ jobs:
     - name: Install Dependencies
       run: pnpm install
       
-    - name: Run Linting
-      run: pnpm turbo run lint
-      
     - name: Type Checking
       run: pnpm turbo run check-types
+      
+    - name: Run Linting
+      run: pnpm turbo run lint
       
     - name: Run Tests
       run: pnpm turbo run test
