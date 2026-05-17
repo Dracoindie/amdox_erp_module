@@ -16,7 +16,7 @@ describe('Auth Routes', () => {
         lastName: 'User',
         role: 'SUPER_ADMIN',
         organizationId: 'org-1',
-        status: 'ACTIVE',
+        isActive: true,
         lastLogin: new Date(),
         createdAt: new Date(),
         updatedAt: new Date(),

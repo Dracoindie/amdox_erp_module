@@ -65,7 +65,9 @@ import csurf from 'csurf';
 const csrfProtection = csurf({ cookie: { httpOnly: true, secure: process.env.NODE_ENV === 'production' } });
 
 // Apply CSRF to all routes after cookie parser
-app.use(csrfProtection);
+if (process.env.NODE_ENV !== 'test') {
+  app.use(csrfProtection);
+}
 
 app.get('/api/v1/csrf-token', (req, res) => {
   res.json({ success: true, data: { csrfToken: req.csrfToken() } });

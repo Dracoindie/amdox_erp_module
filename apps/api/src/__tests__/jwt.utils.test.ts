@@ -4,15 +4,13 @@ import jwt from 'jsonwebtoken';
 describe('JWT Utilities', () => {
   const payload = { userId: 'usr-123', email: 'test@amdox.com', role: 'ADMIN' };
   
-  beforeAll(() => {
-    process.env.JWT_ACCESS_SECRET = 'test-access-secret';
-    process.env.JWT_REFRESH_SECRET = 'test-refresh-secret';
-  });
+  const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'amdox-access-secret-change-in-prod';
+  const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'amdox-refresh-secret-change-in-prod';
 
   it('should sign an access token', () => {
     const token = signAccessToken(payload);
     expect(typeof token).toBe('string');
-    const decoded = jwt.verify(token, 'test-access-secret') as any;
+    const decoded = jwt.verify(token, ACCESS_SECRET) as any;
     expect(decoded.userId).toBe(payload.userId);
     expect(decoded.email).toBe(payload.email);
   });
@@ -20,7 +18,7 @@ describe('JWT Utilities', () => {
   it('should sign a refresh token', () => {
     const token = signRefreshToken(payload);
     expect(typeof token).toBe('string');
-    const decoded = jwt.verify(token, 'test-refresh-secret') as any;
+    const decoded = jwt.verify(token, REFRESH_SECRET) as any;
     expect(decoded.userId).toBe(payload.userId);
   });
 

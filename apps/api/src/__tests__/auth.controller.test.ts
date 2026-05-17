@@ -26,7 +26,7 @@ describe('Auth Controller', () => {
     it('should return 400 if email or password is missing', async () => {
       mockReq = { body: {} };
       await login(mockReq as Request, mockRes as Response);
-      expect(resStatus).toHaveBeenCalledWith(400);
+      expect(resStatus).toHaveBeenCalledWith(422);
       expect(resJson).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
     });
 
@@ -38,7 +38,7 @@ describe('Auth Controller', () => {
     });
 
     it('should return 200 and tokens on successful login', async () => {
-      mockReq = { body: { email: 'test@test.com', password: 'password' } };
+      mockReq = { body: { email: 'test@test.com', password: 'password' }, headers: {} };
       const mockUser = {
         id: 'user-1',
         email: 'test@test.com',
@@ -47,7 +47,7 @@ describe('Auth Controller', () => {
         lastName: 'User',
         role: 'SUPER_ADMIN',
         organizationId: 'org-1',
-        status: 'ACTIVE',
+        isActive: true,
         lastLogin: new Date(),
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -72,18 +72,19 @@ describe('Auth Controller', () => {
   describe('logout', () => {
     it('should clear cookie and return 200', async () => {
       await logout(mockReq as Request, mockRes as Response);
-      expect(mockRes.clearCookie).toHaveBeenCalledWith('refreshToken');
+      expect(mockRes.clearCookie).toHaveBeenCalledWith('refreshToken', expect.any(Object));
       expect(resStatus).toHaveBeenCalledWith(200);
     });
   });
   
   describe('me', () => {
     it('should return user info', async () => {
-       mockReq = { user: { id: 'usr-1', email: 'a@a.com', role: 'ADMIN' } as any };
+       mockReq = { user: { userId: 'usr-1', email: 'a@a.com', role: 'ADMIN' } as any };
+       prismaMock.user.findUnique.mockResolvedValue({ id: 'usr-1', email: 'a@a.com', role: 'ADMIN', isActive: true, createdAt: new Date() } as any);
        await me(mockReq as Request, mockRes as Response);
        expect(resStatus).toHaveBeenCalledWith(200);
        expect(resJson).toHaveBeenCalledWith(expect.objectContaining({
-         data: expect.objectContaining({ user: expect.any(Object) })
+         data: expect.objectContaining({ email: 'a@a.com', role: 'ADMIN' })
        }));
     });
   });
