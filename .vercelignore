@@ -1,0 +1,16 @@
+# Vercel Deployment Ignore list
+# Ignore all local dependencies, build caches, and temporary files
+
+node_modules/
+.next/
+.turbo/
+.vercel/
+out/
+dist/
+temp-ui-extract/
+*.zip
+*.log
+*.txt
+k8s/
+.github/
+.git/
