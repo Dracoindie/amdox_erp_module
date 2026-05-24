@@ -2,6 +2,7 @@
 
 > **A scalable, AI-augmented, multi-tenant ERP platform delivering financial management, supply chain automation, HR & payroll, project tracking, and business intelligence — purpose-built for mid-market and enterprise organisations operating across geographies.**
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-brightgreen?style=flat-block)](https://amdox-erp-production.vercel.app)
 [![CI/CD Pipeline](https://github.com/Dracoindie/amdox_erp_module/actions/workflows/ci.yml/badge.svg)](https://github.com/Dracoindie/amdox_erp_module/actions)
 [![Prisma Schema](https://img.shields.io/badge/Database-PostgreSQL%20%7C%20Prisma-blue?style=flat-block)](https://www.prisma.io/)
 [![Forecasting Engine](https://img.shields.io/badge/AI--ML-Prophet%20%7C%20FastAPI-purple?style=flat-block)](https://fastapi.tiangolo.com/)
