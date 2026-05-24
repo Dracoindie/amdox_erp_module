@@ -9,21 +9,6 @@
 
 ---
 
-## 📸 Platform Screenshots
-
-### 1. Enterprise Login & Session Management
-Our premium "Orange and Black" high-fidelity theme features full glassmorphism, responsive grids, and JWT token rotation.
-![Enterprise Login](./apps/web/public/screenshots/login_dashboard.png)
-
-### 2. Supply Chain & AI Demand Forecasting
-Live integration with the Python FastAPI Prophet ML container. Real-time time-series graphing showcases actual sales history (Orange) vs. ML demand projections (Purple), complete with automated stockout risk calculations and webhooks.
-![SCM Forecasting Dashboard](./apps/web/public/screenshots/scm_ai_forecasting.png)
-
-### 3. Business Intelligence & Analytics Dashboard
-Deep database aggregations visualize company-wide pipelines, active payroll costs, conversion funnels, and real-time operational indicators.
-![BI Analytics Dashboard](./apps/web/public/screenshots/bi_analytics_dashboard.png)
-
----
 
 ## 🏗️ System Architecture
 
