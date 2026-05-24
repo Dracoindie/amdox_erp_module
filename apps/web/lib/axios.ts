@@ -1,6 +1,17 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+const getApiUrl = () => {
+  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+  if (typeof window !== 'undefined') {
+    // If not running on localhost, use relative pathing to bypass Mixed Content rules and let MSW handle it
+    if (!window.location.hostname.includes('localhost')) {
+      return '';
+    }
+  }
+  return 'http://localhost:4000';
+};
+
+const API_URL = getApiUrl();
 
 export const api = axios.create({
   baseURL: `${API_URL}/api/v1`,
