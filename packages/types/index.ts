@@ -47,6 +47,12 @@ export interface PurchaseOrder {
   tenantId?: string;
 }
 
+export interface TimeSeriesPoint {
+  day: string;
+  actual?: number | null;
+  pred?: number | null;
+}
+
 export interface DemandPrediction {
   sku: string;
   predictedDemand: number;
@@ -54,6 +60,7 @@ export interface DemandPrediction {
   stockoutRisk: "Low" | "Medium" | "High";
   recommendedReorder: number;
   date: string;
+  timeSeries?: TimeSeriesPoint[];
 }
 
 export interface AIForecastResponse {

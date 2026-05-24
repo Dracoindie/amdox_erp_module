@@ -28,13 +28,13 @@ amdox-erp-suite/
 | Module | Route | Status |
 |---|---|---|
 | Dashboard | `/` | ✅ Live |
-| Financial Ledger | `/finance` | ✅ Live |
-| HR & Payroll | `/hr` | ✅ Live |
-| Supply Chain | `/scm` | ✅ Live |
+| Financial Ledger | `/finance` | ✅ UI Updated |
+| HR & Payroll | `/hr` | ✅ UI Updated |
+| Supply Chain | `/scm` | ✅ UI Updated |
 | CRM & Sales | `/crm` | ✅ Live |
-| Business Intelligence | `/bi` | ✅ Live |
+| Business Intelligence | `/bi` | ✅ UI Updated |
 | Settings | `/settings` | ✅ Live |
-| Login (API-wired) | `/login` | ✅ Live |
+| Login (API-wired) | `/login` | ✅ UI Updated |
 | REST API | `localhost:4000` | ✅ Scaffolded |
 
 ## 🚀 Getting Started

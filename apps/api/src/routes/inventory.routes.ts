@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import {
   listProducts, getProduct, createProduct, updateProduct,
-  getStockLevels, recordStockMovement
+  getStockLevels, recordStockMovement, getAiForecast
 } from '../controllers/inventory.controller';
 import { requireAuth, requireRole } from '../middleware/auth.middleware';
 
@@ -14,5 +14,6 @@ router.post('/products',             requireRole('SUPER_ADMIN','INVENTORY_MANAGE
 router.patch('/products/:id',        requireRole('SUPER_ADMIN','INVENTORY_MANAGER'), updateProduct);
 router.get('/stock',                 getStockLevels);
 router.post('/stock/movement',       requireRole('SUPER_ADMIN','INVENTORY_MANAGER'), recordStockMovement);
+router.post('/forecast/demand',     getAiForecast);
 
 export default router;

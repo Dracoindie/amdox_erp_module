@@ -67,6 +67,14 @@ services:
       redis:
         condition: service_healthy
 
+  ml-service:
+    build:
+      context: apps/ml-service
+      dockerfile: Dockerfile
+    container_name: amx_ml_service
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
 
 volumes:
   postgres_data:

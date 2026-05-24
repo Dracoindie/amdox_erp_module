@@ -16,6 +16,7 @@ const productSchema = z.object({
 
 export async function listProducts(req: Request, res: Response) {
   const { page, limit, skip, sort, order, search } = parsePagination(req.query as any);
+  const activeSort = sort === 'createdAt' ? 'sku' : sort;
   const where = search
     ? { isActive: true, OR: [
         { name: { contains: search, mode: 'insensitive' as const } },
@@ -27,7 +28,7 @@ export async function listProducts(req: Request, res: Response) {
       where,
       skip,
       take: limit,
-      orderBy: { [sort]: order },
+      orderBy: { [activeSort]: order },
       include: { stockLevels: { include: { warehouse: { select: { name: true } } } } },
     }),
     prisma.product.count({ where }),
@@ -97,4 +98,34 @@ export async function recordStockMovement(req: Request, res: Response) {
     data: { ...parsed.data, performedBy: req.user!.userId },
   });
   return created(res, movement, 'Stock movement recorded');
+}
+
+export async function getAiForecast(req: Request, res: Response) {
+  try {
+    const mlUrl = process.env.ML_SERVICE_URL || 'http://localhost:8000';
+    const response = await fetch(`${mlUrl}/api/v1/forecast/demand`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      console.error(`ML service returned status ${response.status}`);
+      return res.status(response.status).json({
+        success: false,
+        message: `ML service forecasting error (HTTP ${response.status})`,
+      });
+    }
+
+    const data = await response.json();
+    return res.json(data);
+  } catch (error: any) {
+    console.error('Failed to proxy forecast request to ML service:', error);
+    return res.status(502).json({
+      success: false,
+      message: 'Failed to connect to ML forecasting service',
+      error: error.message,
+    });
+  }
 }

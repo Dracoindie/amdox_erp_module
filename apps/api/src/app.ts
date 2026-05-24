@@ -23,6 +23,7 @@ import customerRoutes  from './routes/customer.routes';
 import leadRoutes      from './routes/lead.routes';
 import notificationRoutes from './routes/notification.routes';
 import adminRoutes     from './routes/admin.routes';
+import biRoutes        from './routes/bi.routes';
 
 const app: Application = express();
 
@@ -107,6 +108,7 @@ app.use(`${BASE}/customers`,     customerRoutes);
 app.use(`${BASE}/leads`,         leadRoutes);
 app.use(`${BASE}/notifications`, notificationRoutes);
 app.use(`${BASE}/admin`,         adminRoutes);
+app.use(`${BASE}/bi`,            biRoutes);
 
 // ─── Error Handling ───────────────────────────────────────────────────────────
 
