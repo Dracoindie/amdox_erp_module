@@ -14,7 +14,7 @@ COPY --from=pruner /app/out/json/ .
 COPY --from=pruner /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=pruner /app/out/pnpm-workspace.yaml ./pnpm-workspace.yaml
 
-RUN corepack enable pnpm
+RUN npm install -g pnpm@9.15.9
 RUN pnpm install --frozen-lockfile
 
 COPY --from=pruner /app/out/full/ .
