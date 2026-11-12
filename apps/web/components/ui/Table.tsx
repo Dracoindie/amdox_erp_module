@@ -89,7 +89,13 @@ export function DataTable<T>({
   return (
     <>
       {/* Desktop / tablet table */}
-      <div className="relative hidden overflow-x-auto md:block">
+      {/* Focusable so keyboard users can scroll a table wider than its card (WCAG 2.1.1) */}
+      <div
+        role="region"
+        aria-label={caption}
+        tabIndex={0}
+        className="relative hidden overflow-x-auto rounded-[inherit] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary md:block"
+      >
         <table className="w-full border-collapse text-sm">
           <caption className="sr-only">{caption}</caption>
           <thead>

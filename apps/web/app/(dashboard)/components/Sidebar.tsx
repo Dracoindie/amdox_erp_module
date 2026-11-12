@@ -45,7 +45,7 @@ export function Sidebar() {
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-line bg-surface lg:flex">
       <div className="flex h-16 shrink-0 items-center border-b border-line px-5">
-        <Link href="/" aria-label="Amdox ERP home"><Logo /></Link>
+        <Link href="/"><Logo /><span className="sr-only"> (home)</span></Link>
       </div>
       <NavLinks />
       <p className="border-t border-line px-5 py-3 text-xs text-fg-subtle">AMX-ERP-2026 · v0.2</p>

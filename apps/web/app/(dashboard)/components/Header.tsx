@@ -83,12 +83,14 @@ function UserMenu() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
-        aria-label={`Account menu for ${name}`}
         className="flex h-10 items-center gap-2.5 rounded-lg pl-1 pr-1 transition-colors hover:bg-surface-2 sm:h-9 sm:pr-2.5"
       >
-        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-soft text-xs font-semibold text-primary-soft-fg sm:h-7 sm:w-7">
+        <span aria-hidden className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-soft text-xs font-semibold text-primary-soft-fg sm:h-7 sm:w-7">
           {initials(name) || '?'}
         </span>
+        {/* Named by its visible text plus screen-reader text, so the name matches what's shown (WCAG 2.5.3) */}
+        <span className="sr-only">Account menu: </span>
+        <span className="sr-only md:hidden">{name}</span>
         <span className="hidden text-left leading-tight md:block">
           <span className="block max-w-40 truncate text-sm font-medium text-fg">{name}</span>
           <span className="block text-xs text-fg-subtle">{user ? roleLabel(user.role) : ''}</span>
