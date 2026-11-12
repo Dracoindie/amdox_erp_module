@@ -38,3 +38,13 @@ yarn-error.log*
 *.pem
 
 .vercel
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Logs
+*.log
+logs/
