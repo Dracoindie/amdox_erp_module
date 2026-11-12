@@ -3,6 +3,7 @@ import { prisma } from '../utils/prisma';
 import { ok, created, listQuery, paging, buildMeta } from '../utils/response';
 import { endpoint, idParams, uuid } from '../middleware/validate';
 import { notFound } from '../utils/httpError';
+import { positiveMoney } from '../utils/money';
 import { ROLES, hasRole } from '../middleware/roles';
 import type { Request } from 'express';
 
@@ -20,7 +21,7 @@ const createSchema = z.object({
   phone: z.string().max(50).optional(),
   departmentId: uuid.optional(),
   designation: z.string().max(200).optional(),
-  grossSalary: z.number().positive(),
+  grossSalary: positiveMoney,
   joinDate: z.string().datetime().or(z.string().date()),
   status: z.enum(['ACTIVE', 'ONBOARDING', 'TERMINATED']).optional(),
 }).strict();

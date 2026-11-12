@@ -3,13 +3,14 @@ import { prisma } from '../utils/prisma';
 import { ok, created, listQuery, paging, buildMeta } from '../utils/response';
 import { endpoint, idParams, uuid, isoDate } from '../middleware/validate';
 import { notFound } from '../utils/httpError';
+import { nonNegativeMoney } from '../utils/money';
 
 const STAGES = ['PROSPECT', 'QUALIFIED', 'PROPOSAL', 'NEGOTIATION', 'WON', 'LOST'] as const;
 
 const createSchema = z.object({
   customerId: uuid,
   stage: z.enum(STAGES).default('PROSPECT'),
-  value: z.number().min(0).default(0),
+  value: nonNegativeMoney.default(0),
   expectedClose: isoDate.optional(),
   assignedTo: z.string().max(200).optional(),
   notes: z.string().max(5000).optional(),

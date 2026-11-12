@@ -1,41 +1,58 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { requireAuth, requireRole } from '../middleware/auth.middleware';
-import { endpoint, noInput } from '../middleware/validate';
-import { ROLES } from '../middleware/roles';
+import { endpoint, idParams, noInput } from '../middleware/validate';
+import { ROLES, resolveActingEmployee } from '../middleware/roles';
 import { ok, created } from '../utils/response';
 import { prisma } from '../utils/prisma';
+import { notFound } from '../utils/httpError';
+import { runPayroll } from '../services/payroll.service';
 
 const router = Router();
 router.use(requireAuth);
 
 router.get('/', requireRole(...ROLES.PAYROLL_VIEW), ...endpoint({ query: noInput }, async (_input, _req, res) => {
-  const runs = await prisma.payrollRun.findMany({ orderBy: { createdAt: 'desc' }, take: 12 });
-  return ok(res, runs);
+  const runs = await prisma.payrollRun.findMany({
+    orderBy: { periodStart: 'desc' },
+    take: 24,
+    include: { _count: { select: { payslips: true } } },
+  });
+  return ok(res, runs, 'Payroll runs retrieved');
 }));
 
-router.post('/run', requireRole(...ROLES.HR), ...endpoint({ body: noInput }, async (_input, req, res) => {
-  const employees = await prisma.employee.findMany({ where: { isArchived: false } });
-  const TAX_RATE = 0.2;
-  const INS_RATE = 0.05;
-  const totals = employees.reduce((acc, e) => {
-    const taxes = e.grossSalary * TAX_RATE;
-    const ins = e.grossSalary * INS_RATE;
-    return { gross: acc.gross + e.grossSalary, taxes: acc.taxes + taxes, net: acc.net + (e.grossSalary - taxes - ins) };
-  }, { gross: 0, taxes: 0, net: 0 });
+const runSchema = z.object({
+  year: z.number().int().min(2000).max(2100).optional(),
+  month: z.number().int().min(1).max(12).optional(),
+}).strict();
 
+// Defaults to the current (UTC) month. Running the same month twice → 409.
+router.post('/run', requireRole(...ROLES.HR), ...endpoint({ body: runSchema }, async ({ body }, req, res) => {
   const now = new Date();
-  const run = await prisma.payrollRun.create({
-    data: {
-      periodStart: new Date(now.getFullYear(), now.getMonth(), 1),
-      periodEnd: new Date(now.getFullYear(), now.getMonth() + 1, 0),
-      status: 'CONFIRMED',
-      runBy: req.user!.userId,
-      totalGross: totals.gross,
-      totalTaxes: totals.taxes,
-      totalNet: totals.net,
-    },
-  });
+  const year = body.year ?? now.getUTCFullYear();
+  const month = body.month ?? now.getUTCMonth() + 1;
+  const run = await runPayroll(year, month, req.user!.userId);
   return created(res, run, 'Payroll run confirmed');
+}));
+
+router.get('/:id/payslips', requireRole(...ROLES.PAYROLL_VIEW), ...endpoint({ params: idParams }, async ({ params }, _req, res) => {
+  const run = await prisma.payrollRun.findUnique({
+    where: { id: params.id },
+    include: { payslips: { include: { employee: { select: { name: true, designation: true } } } } },
+  });
+  if (!run) throw notFound('Payroll run');
+  return ok(res, run, 'Payslips retrieved');
+}));
+
+// Every employee can see their own payslips.
+router.get('/my-payslips', requireRole(...ROLES.STAFF), ...endpoint({ query: noInput }, async (_input, req, res) => {
+  const employeeId = await resolveActingEmployee(req);
+  const slips = await prisma.payslip.findMany({
+    where: { employeeId },
+    orderBy: { createdAt: 'desc' },
+    take: 24,
+    include: { payrollRun: { select: { periodStart: true, periodEnd: true, status: true } } },
+  });
+  return ok(res, slips, 'Payslips retrieved');
 }));
 
 export default router;

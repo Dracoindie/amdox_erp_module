@@ -5,6 +5,7 @@ import { endpoint, idParams, noInput, uuid } from '../middleware/validate';
 import { ROLES } from '../middleware/roles';
 import { ok, created } from '../utils/response';
 import { prisma } from '../utils/prisma';
+import { nonNegativeMoney } from '../utils/money';
 
 const router = Router();
 router.use(requireAuth);
@@ -14,8 +15,8 @@ const INVENTORY = ROLES.INVENTORY;
 const orderSchema = z.object({
   supplierId: uuid,
   description: z.string().max(1000).optional(),
-  subtotal: z.number().min(0),
-  tax: z.number().min(0).default(0),
+  subtotal: nonNegativeMoney,
+  tax: nonNegativeMoney.default(0),
 }).strict();
 
 const supplierSchema = z.object({
@@ -37,7 +38,7 @@ router.get('/orders', ...endpoint({ query: noInput }, async (_input, _req, res) 
 
 router.post('/orders', requireRole(...INVENTORY), ...endpoint({ body: orderSchema }, async ({ body }, req, res) => {
   const order = await prisma.purchaseOrder.create({
-    data: { ...body, total: body.subtotal + body.tax, createdBy: req.user!.userId },
+    data: { ...body, total: body.subtotal.plus(body.tax), createdBy: req.user!.userId },
   });
   return created(res, order, 'Purchase order created');
 }));

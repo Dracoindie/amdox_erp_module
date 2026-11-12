@@ -4,18 +4,25 @@ import { ok, created, listQuery, paging, buildMeta } from '../utils/response';
 import { endpoint, idParams, uuid, isoDate } from '../middleware/validate';
 import { HttpError } from '../utils/httpError';
 import { ROLES, hasRole } from '../middleware/roles';
+import { Decimal, nonNegativeMoney, positiveMoney, sum } from '../utils/money';
+import { nextCounterValue } from '../services/counter.service';
 
 // ── Journal Entries ───────────────────────────────────────────────────────────
+
+const lineSchema = z.object({
+  accountId: uuid,
+  debit: nonNegativeMoney.optional(),
+  credit: nonNegativeMoney.optional(),
+  memo: z.string().max(500).optional(),
+}).strict().refine(
+  (l) => (l.debit instanceof Decimal && l.debit.gt(0)) !== (l.credit instanceof Decimal && l.credit.gt(0)),
+  { message: "Each line needs exactly one of debit or credit, greater than 0" },
+);
 
 const entrySchema = z.object({
   date: isoDate,
   description: z.string().trim().min(1).max(500),
-  lines: z.array(z.object({
-    accountId: uuid,
-    debit: z.number().min(0).default(0),
-    credit: z.number().min(0).default(0),
-    memo: z.string().max(500).optional(),
-  }).strict()).min(2, 'At least 2 journal lines required').max(100),
+  lines: z.array(lineSchema).min(2, "At least 2 journal lines required").max(100),
 }).strict();
 
 const ledgerQuery = listQuery(['date', 'createdAt', 'totalDebit']);
@@ -35,23 +42,37 @@ export const listJournalEntries = endpoint({ query: ledgerQuery }, async ({ quer
 });
 
 export const createJournalEntry = endpoint({ body: entrySchema }, async ({ body }, req, res) => {
-  const totalDebit = body.lines.reduce((s, l) => s + l.debit, 0);
-  const totalCredit = body.lines.reduce((s, l) => s + l.credit, 0);
-  if (Math.abs(totalDebit - totalCredit) > 0.01) {
-    throw new HttpError(422, 'Total debits must equal total credits');
+  const lines = body.lines.map((l) => ({
+    accountId: l.accountId,
+    debit: l.debit ?? new Decimal(0),
+    credit: l.credit ?? new Decimal(0),
+    memo: l.memo,
+  }));
+  const totalDebit = sum(lines.map((l) => l.debit));
+  const totalCredit = sum(lines.map((l) => l.credit));
+  if (!totalDebit.eq(totalCredit)) {
+    throw new HttpError(422, `Total debits (${totalDebit.toFixed(2)}) must equal total credits (${totalCredit.toFixed(2)})`);
   }
 
-  const entry = await prisma.journalEntry.create({
-    data: {
-      date: new Date(body.date),
-      description: body.description,
-      createdBy: req.user!.userId,
-      totalDebit,
-      totalCredit,
-      status: 'POSTED',
-      lines: { create: body.lines },
-    },
-    include: { lines: true },
+  const entry = await prisma.$transaction(async (tx) => {
+    const accountIds = [...new Set(lines.map((l) => l.accountId))];
+    const found = await tx.account.findMany({ where: { id: { in: accountIds }, isActive: true }, select: { id: true } });
+    if (found.length !== accountIds.length) {
+      const known = new Set(found.map((a) => a.id));
+      throw new HttpError(422, "Unknown or inactive account", { accountIds: accountIds.filter((id) => !known.has(id)) });
+    }
+    return tx.journalEntry.create({
+      data: {
+        date: new Date(body.date),
+        description: body.description,
+        createdBy: req.user!.userId,
+        totalDebit,
+        totalCredit,
+        status: 'POSTED',
+        lines: { create: lines },
+      },
+      include: { lines: { include: { account: { select: { code: true, name: true } } } } },
+    });
   });
   return created(res, entry, 'Journal entry posted');
 });
@@ -62,8 +83,8 @@ const INVOICE_STATUSES = ['DRAFT', 'SENT', 'PAID', 'OVERDUE', 'VOID'] as const;
 
 const invoiceSchema = z.object({
   customerId: uuid,
-  subtotal: z.number().min(0),
-  tax: z.number().min(0).default(0),
+  subtotal: nonNegativeMoney,
+  tax: nonNegativeMoney.default(0),
   dueDate: isoDate.optional(),
 }).strict();
 
@@ -86,18 +107,20 @@ export const listInvoices = endpoint({ query: invoiceQuery }, async ({ query }, 
 });
 
 export const createInvoice = endpoint({ body: invoiceSchema }, async ({ body }, _req, res) => {
-  const count = await prisma.invoice.count();
-  const number = `INV-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
-  const invoice = await prisma.invoice.create({
-    data: {
-      customerId: body.customerId,
-      subtotal: body.subtotal,
-      tax: body.tax,
-      number,
-      total: body.subtotal + body.tax,
-      dueDate: body.dueDate ? new Date(body.dueDate) : undefined,
-    },
-    include: { customer: { select: { name: true } } },
+  const year = new Date().getUTCFullYear();
+  const invoice = await prisma.$transaction(async (tx) => {
+    const n = await nextCounterValue(tx, `invoice:${year}`);
+    return tx.invoice.create({
+      data: {
+        customerId: body.customerId,
+        number: `INV-${year}-${String(n).padStart(5, "0")}`,
+        subtotal: body.subtotal,
+        tax: body.tax,
+        total: body.subtotal.plus(body.tax),
+        dueDate: body.dueDate ? new Date(body.dueDate) : undefined,
+      },
+      include: { customer: { select: { name: true } } },
+    });
   });
   return created(res, invoice, 'Invoice created');
 });
@@ -114,7 +137,7 @@ export const updateInvoiceStatus = endpoint(
 
 const expenseSchema = z.object({
   category: z.string().trim().min(1).max(100),
-  amount: z.number().positive(),
+  amount: positiveMoney,
   description: z.string().max(1000).optional(),
 }).strict();
 

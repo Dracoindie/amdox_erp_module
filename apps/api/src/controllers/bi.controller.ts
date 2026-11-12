@@ -14,7 +14,7 @@ export const getBISummary = endpoint({ query: noInput }, async (_input, _req, re
   });
   
   // Base monthly salary is active gross salaries divided by 12, defaulted if empty
-  const monthlyPayroll = Math.round((activeSalaries._sum.grossSalary || 300000) / 12);
+  const monthlyPayroll = Math.round(Number(activeSalaries._sum.grossSalary ?? 300000) / 12);
 
   // Aggregate active lead values in CRM pipeline
   const pipelineValue = await prisma.lead.aggregate({
@@ -22,7 +22,7 @@ export const getBISummary = endpoint({ query: noInput }, async (_input, _req, re
       value: true
     }
   });
-  const totalPipeline = pipelineValue._sum.value || 120000;
+  const totalPipeline = Number(pipelineValue._sum.value ?? 120000);
 
   // Render dynamic sales data
   const sales = [

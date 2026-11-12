@@ -21,7 +21,13 @@ import {
 } from 'lucide-react';
 
 import type { Employee } from '@repo/types';
-import api from '../../../lib/axios';
+import api, { apiErrorMessage } from '../../../lib/axios';
+
+const NOW = new Date();
+const PERIOD_KEY = `${NOW.getUTCFullYear()}-${String(NOW.getUTCMonth() + 1).padStart(2, '0')}`;
+const PERIOD_LABEL = NOW.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+// Same rules as the API (payroll.service.ts): monthly gross = annual / 12.
+const monthly = (annual: number) => Math.round((annual / 12) * 100) / 100;
 
 // ─────────────────────────────────────────────────────────────
 // MOCK DATA
@@ -144,7 +150,7 @@ export default function HRPage() {
           department: emp.department?.name || 'Unassigned',
           role: emp.designation || 'Employee',
           status: emp.status === 'TERMINATED' ? 'Terminated' : (emp.status === 'ACTIVE' ? 'Active' : emp.status),
-          grossSalary: emp.grossSalary || 0,
+          grossSalary: Number(emp.grossSalary ?? 0),
         }));
         setEmployees(fetchedEmployees);
       }
@@ -188,18 +194,29 @@ export default function HRPage() {
           )
     );
 
-  const handleConfirmPayroll =
-    async () => {
-      setIsProcessing(true);
+  const [payrollError, setPayrollError] = useState('');
 
-      await new Promise((r) =>
-        setTimeout(r, 1500)
-      );
+  // Is there already a run for the current month?
+  useEffect(() => {
+    api.get('/payroll').then((res) => {
+      const runs: Array<{ periodStart: string }> = res.data?.data ?? [];
+      if (runs.some((r) => r.periodStart.startsWith(PERIOD_KEY))) setPayrollStatus('Confirmed');
+    }).catch(() => { /* no payroll access: keep Draft */ });
+  }, []);
 
+  const handleConfirmPayroll = async () => {
+    setIsProcessing(true);
+    setPayrollError('');
+    try {
+      await api.post('/payroll/run', { year: NOW.getUTCFullYear(), month: NOW.getUTCMonth() + 1 });
       setPayrollStatus('Confirmed');
-
+    } catch (err: any) {
+      if (err?.response?.status === 409) setPayrollStatus('Confirmed');
+      setPayrollError(apiErrorMessage(err, 'Payroll run failed'));
+    } finally {
       setIsProcessing(false);
-    };
+    }
+  };
 
   const tabs = [
     {
@@ -666,7 +683,7 @@ export default function HRPage() {
 
             <div>
               <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                Payroll Cycle · May 2026
+                Payroll Cycle · {PERIOD_LABEL}
               </h3>
 
               <p className="mt-2 text-sm text-slate-500">
@@ -682,6 +699,9 @@ export default function HRPage() {
                   {payrollStatus}
                 </span>
               </p>
+              {payrollError && (
+                <p role="alert" className="mt-2 text-sm font-medium text-rose-500">{payrollError}</p>
+              )}
             </div>
 
             <button
@@ -737,18 +757,10 @@ export default function HRPage() {
               <tbody>
 
                 {employees.map((emp) => {
-                  const taxes =
-                    emp.grossSalary *
-                    TAX_RATE;
-
-                  const insurance =
-                    emp.grossSalary *
-                    INSURANCE_RATE;
-
-                  const net =
-                    emp.grossSalary -
-                    taxes -
-                    insurance;
+                  const gross = monthly(emp.grossSalary);
+                  const taxes = Math.round(gross * TAX_RATE * 100) / 100;
+                  const insurance = Math.round(gross * INSURANCE_RATE * 100) / 100;
+                  const net = gross - taxes - insurance;
 
                   return (
                     <tr
@@ -770,8 +782,7 @@ export default function HRPage() {
                       </td>
 
                       <td className="px-6 py-5 font-medium">
-                        $
-                        {emp.grossSalary.toLocaleString()}
+                        ${gross.toLocaleString()}
                       </td>
 
                       <td className="px-6 py-5 text-rose-500">
