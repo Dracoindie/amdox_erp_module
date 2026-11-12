@@ -144,3 +144,90 @@ Severity:
 
 - **Read access by role:** the API lets every signed-in role read every module (an EMPLOYEE can list all invoices; READ_ONLY sees the ledger). The UI mirrors the API, so the nav shows every module. Narrowing reads is a backend RBAC decision.
 - **Currency:** the data is USD-like (salaries of 64k–180k a year). I made the currency configurable (`NEXT_PUBLIC_CURRENCY`, `NEXT_PUBLIC_LOCALE`), defaulting to USD. Switching to ₹ is a one-line env change, but the seed amounts would then read as rupees.
+
+---
+
+# After the overhaul
+
+The same capture was run against the rebuilt UI (`after/`, about 400 screenshots). Here is what changed.
+
+| Check | Before | After |
+|---|---|---|
+| Horizontal page overflow (tablet and phone views) | 48 / 48 views | 0 views |
+| axe `color-contrast` | 210 nodes, 24 views | 0 |
+| axe `svg-img-alt` | 11 | 0 (each chart is `role="img"` with a label, plus a "Show data table" option) |
+| Any axe WCAG 2 A/AA violation | 2 rules | **0 rules** on all 24 views |
+| Console errors during normal use | 0 | 0 (Playwright smoke test, all 7 roles, every page and tab) |
+| Mobile navigation | none | off-canvas drawer (native `<dialog>`) |
+
+## Status per finding
+
+| # | Sev | Status | How |
+|---|---|---|---|
+| L1 | Critical | Fixed | Sidebar fixed from `lg` (1024 px) up; below that, a drawer |
+| L2 | Critical | Fixed | Modals use native `<dialog>` in the top layer, above every z-index |
+| L3 | High | Fixed | Notification panel is positioned from the header, with no competing stacking contexts |
+| L4 | High | Fixed | The document scrolls; the header is sticky; scroll resets to the top on navigation |
+| L5 | High | Fixed | Header breadcrumb (Module › Tab); one h1 per page |
+| L6 | High | Fixed | "Open navigation" button |
+| L7 | Medium | Fixed | Tables become cards below `md`; the low-priority "Lines" column shows from `xl` |
+| L8 | Medium | Fixed | Buttons never wrap (`whitespace-nowrap`); card actions wrap as a group |
+| L9 | Medium | Fixed | Underline tabs that scroll sideways; active tab kept in `?tab=` |
+| L10 | Medium | Fixed | Columns scroll and snap; each card has a "Stage" menu (keyboard and touch) |
+| L11 | Medium | Fixed | Decorative blurs removed |
+| L12 | Low | Fixed | `overflow-x: hidden` removed; overflow is fixed at the source |
+| L13 | Low | Fixed | Account menu in the header with a labelled sign-out |
+| V1 | High | Fixed | Semantic tokens in `globals.css`; no hex colours in components |
+| V2 | High | Fixed | Primary action colour `#c2410c` (5.2:1 with white); brand `#ff5a00` kept for the logo mark |
+| V3 | Medium | Fixed | Shared `AuthCard`; same inputs and buttons as the app |
+| V4 | Medium | Fixed | Radius: 8 px controls, 12 px cards, 16 px dialogs. Type scale 12/14/16/18/24 px (only the notification count badge uses 10 px) |
+| V5 | Medium | Fixed | Geist applied through `--font-sans` |
+| V6 | Medium | Fixed | Page title 24 px semibold; KPI values in text colour |
+| V7 | Low | Fixed | Colour only on the KPI hint line, and always with words |
+| V8 | Low | Fixed | Boilerplate removed |
+| T1 | High | Fixed | `numeric` columns are right-aligned with tabular figures |
+| T2 | High | Fixed | Stacked phone cards from the same column definitions |
+| T3 | Medium | Mostly fixed | Server-side sort on every endpoint that supports it; client-side sort for POs, suppliers, forecast and reports. Leave, attendance and the audit log stay unsorted because their endpoints take no sort parameter. |
+| T4 | Medium | Fixed | "1–20 of 31 invoices" footer, with Previous / Page x of y / Next |
+| T5 | Medium | Fixed | `NEXT_PUBLIC_CURRENCY` / `NEXT_PUBLIC_LOCALE` (default USD / en-US) |
+| T6 | Medium | Fixed | One aligned row per line: Dr/Cr, account, amount |
+| T7 | Low | Partial | Role changes and disabling a user now ask for confirmation and toast the result. Invoice status is still an inline select (it now toasts), because every transition is reversible. |
+| T8 | Low | Fixed | Selectable forecast rows have a button in the first cell and `aria-selected` |
+| F1 | High | Fixed | Visible labels; show-password toggle; `autocomplete` |
+| F2 | High | Fixed | `<Form>` shows client and 422 errors under each field and focuses the first invalid field |
+| F3 | High | Fixed | Toasts after every create, update and status change |
+| F4 | High | Fixed | Confirm dialog before running payroll, cancelling a PO or sales order, disabling a user and changing a role |
+| F5 | Medium | Fixed | Spinner and `aria-busy` on submit; repeat submits are ignored |
+| F6 | Medium | Fixed | Currency prefix and `inputMode` on money, number, email and phone fields |
+| F7 | Medium | Fixed | Modal content unmounts on close, so forms always open clean |
+| F8 | Low | Fixed | The copy now says a request was recorded and to contact an administrator |
+| S1 | Critical | Fixed | A network error or 5xx shows "Can't reach the server" with a retry; only a 401/403 counts as signed out |
+| S2 | High | Fixed | Shell skeleton during the session check; table, stat, chart and kanban skeletons |
+| S3 | Medium | Fixed | Titled error card, explanation and "Try again"; separate offline and no-access variants |
+| S4 | Medium | Fixed | Icon, title, guidance and a call-to-action button where the role can create records |
+| S5 | Medium | Fixed | Branded 404; tabs a role can't use are hidden; 403 variant of `ErrorState` |
+| S6 | Medium | Fixed | `app/(dashboard)/error.tsx` boundary |
+| C1 | High | Fixed | Chart colours read from tokens, so they switch with the theme; HTML legends and tooltips in text colours |
+| C2 | Medium | Fixed | Reference palette (CVD-validated), with fixed slots per entity (revenue = blue, costs = orange, …) |
+| C3 | Medium | Fixed | Current month labelled "(to date)" and shaded; straight lines between monthly points |
+| C4 | Medium | Fixed | `role="img"` and `aria-label`; "Show data table" under each chart; donuts replaced by labelled bar lists |
+| C5 | Low | Fixed | Empty state when a range has no data |
+| C6 | Low | Fixed | Tooltip shows units ("12.5 units") |
+| A1 | High | Fixed | axe: 0 violations |
+| A2 | High | Fixed | Native modal dialog: inert background, Escape, focus restore, scroll lock |
+| A3 | High | Fixed | WAI-ARIA tabs (arrows / Home / End, `aria-controls`, `tabpanel`) |
+| A4 | Medium | Fixed | Global `:focus-visible` ring; skip-to-content link |
+| A5 | Medium | Fixed | `IconButton` requires `aria-label` |
+| A6 | Medium | Fixed | Escape closes the panel and returns focus to the bell; the panel is a labelled region |
+| A7 | Low | Fixed | `aria-current="page"` |
+| D1 | High | Fixed | Inline head script sets the theme before first paint |
+| D2 | High | Fixed | Auth pages use the same tokens and have a theme toggle |
+| D3 | Medium | Fixed | Light / Dark / System; System is the default |
+| D4 | Medium | Fixed | Tokens cover every surface; no per-element `dark:` styling left to miss |
+| P1 | Medium | Fixed | Recharts loads through `next/dynamic`, so only routes that draw a chart fetch it, and only when the chart renders |
+| P2 | Low | Fixed | Fonts are now used (`display: swap`) |
+| P3 | Low | Skipped | Splitting each page per tab isn't worth it at this size |
+
+Found during the rebuild and fixed:
+- Two seeded leave requests had their start and end dates swapped, so the UI showed a negative number of days. The API already rejects this; only the seed was wrong.
+- Visually hidden table header labels escaped the scroll container and caused a 26 px page overflow.
