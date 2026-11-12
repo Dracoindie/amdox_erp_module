@@ -1,162 +1,204 @@
-# AMX-ERP-2026 — Amdox Technology Cloud ERP Suite
+# AMX-ERP-2026 — Amdox ERP Suite
 
-> **A scalable, AI-augmented, multi-tenant ERP platform delivering financial management, supply chain automation, HR & payroll, project tracking, and business intelligence — purpose-built for mid-market and enterprise organisations operating across geographies.**
+[![CI](https://github.com/Dracoindie/amdox_erp_module/actions/workflows/ci.yml/badge.svg)](https://github.com/Dracoindie/amdox_erp_module/actions/workflows/ci.yml)
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-brightgreen?style=flat-block)](https://amdox-erp-production.vercel.app)
-[![CI/CD Pipeline](https://github.com/Dracoindie/amdox_erp_module/actions/workflows/ci.yml/badge.svg)](https://github.com/Dracoindie/amdox_erp_module/actions)
-[![Prisma Schema](https://img.shields.io/badge/Database-PostgreSQL%20%7C%20Prisma-blue?style=flat-block)](https://www.prisma.io/)
-[![Forecasting Engine](https://img.shields.io/badge/AI--ML-Prophet%20%7C%20FastAPI-purple?style=flat-block)](https://fastapi.tiangolo.com/)
-[![SLA Compliance](https://img.shields.io/badge/SLA-99.9%25%20Uptime-orange?style=flat-block)](#-security-compliance--slas)
+A modular ERP for a single organisation: finance (double-entry ledger, invoices, expenses, budgets), HR and payroll, inventory and purchasing with demand forecasting, CRM, and business-intelligence reports. It is a pnpm/Turborepo monorepo with a Next.js frontend, an Express + Prisma API on PostgreSQL, and a Python forecasting service.
+
+> Internship project. Multi-tenancy, e-mail delivery and password reset are **planned, not built** — see [Limitations](#limitations).
 
 ---
 
-
-## 🏗️ System Architecture
-
-AMX-ERP-2026 follows a **modular monolith** backend gateway pattern integrated with a dedicated **AI/ML microservice** and a high-performance **Next.js frontend client**.
+## Architecture
 
 ```
-                           +---------------------------------------+
-                           |           Client Layer                |
-                           |     Next.js 15 SPA (Port 3000)        |
-                           +-------------------+-------------------+
-                                               |
-                                               | (HTTPS, REST + JWT + CSRF)
-                                               v
-                           +---------------------------------------+
-                           |          API Gateway Layer            |
-                           |     Express / NestJS Gateway (4000)   |
-                           +---------+-------------------+---------+
-                                     |                   |
-                  (Internal Fetch)   |                   | (Prisma ORM)
-                                     v                   v
-      +--------------------------------+   +--------------------------------+
-      |        AI / ML Service         |   |         Database Layer         |
-      |   Python FastAPI (Port 8000)   |   |    PostgreSQL 16 (Port 5432)   |
-      |     (Prophet Forecasts)        |   |    Redis Session (Port 6379)   |
-      +--------------------------------+   +--------------------------------+
+ Browser ──HTTPS──▶  web  (Next.js 16, :3000)
+    │                  static pages, client-side data fetching
+    │
+    └──── REST /api/v1 (Bearer access token + httpOnly refresh cookie + CSRF header)
+                       ▼
+                     api  (Express 5 + Prisma, :4000)
+                       │  zod validation · RBAC · audit trail · notifications
+           ┌───────────┴──────────────┐
+           ▼                          ▼
+   PostgreSQL 16 (:5432)      ml-service (FastAPI + Prophet, :8000)
+                              internal only, X-Internal-Token
 ```
 
-### System Layers
-* **Client Layer**: Next.js 15 App Router (`apps/web`) utilizing React 19, TypeScript 5.5, and Radix UI elements styled with Tailwind.
-* **API Gateway & Routing**: Node.js + Express Gateway (`apps/api`) managing Helmet.js security headers, slide-window rate-limiting, and Cookie-parser JWT session rotations.
-* **Core Business Engines**: Decoupled in-process modules (`Finance`, `SCM`, `HR & Payroll`, `Notifications`) managing transactions, ledger balances, and employee records.
-* **AI/ML Forecasting**: Dedicated FastAPI container (`apps/ml-service`) fitting Prophet time-series seasonal models dynamically to forecast demand.
-* **Data Storage**: PostgreSQL 16 (relational ACID transactions) + Redis 7 (high-speed session cache & jobs queue).
-
----
-
-## 🗂️ Monorepo Structure
-
-Our code is organized as a unified monorepo governed by **Turborepo** and **pnpm workspaces** for strict compilation efficiency:
+| Layer | Stack (versions in the lockfile) |
+|---|---|
+| Web | Next.js 16.2, React 19.2, Tailwind CSS 4, Recharts 2, dnd-kit, axios; MSW 2 for the static demo |
+| API | Node.js 22, Express 5.3, Prisma 5.22, Zod 3, jsonwebtoken, helmet, express-rate-limit, winston |
+| Data | PostgreSQL 16; money stored as `DECIMAL(14,2)` |
+| ML | Python 3.11, FastAPI 0.111, Pydantic 2, pandas, Prophet 1.1.6 |
+| Tooling | pnpm 9, Turborepo 2, TypeScript 5, Jest 30 + Supertest, pytest, GitHub Actions, Docker, Kubernetes manifests |
 
 ```
-amdox-erp-suite/
-├── apps/
-│   ├── web/          # Next.js 15 + React 19 + TypeScript (Frontend Client)
-│   ├── api/          # Node.js + Express + Prisma (API Gateway & Core)
-│   └── ml-service/   # Python 3.13 + FastAPI + Prophet (Forecasting Engine)
-├── packages/
-│   ├── types/        # Shared TypeScript typings (Data Contracts)
-│   ├── ui/           # Shared reusable visual UI design system
-│   ├── eslint-config/# Central code styling rules
-│   └── typescript-config/
-├── k8s/              # Production Kubernetes deployment configurations
-├── docker-compose.yml# Multi-container local orchestration
-└── turbo.json        # Turborepo build cache pipeline
+apps/
+  api/          Express API, Prisma schema + migrations, seed, Jest tests
+  web/          Next.js app (dashboard pages, auth, MSW demo mocks)
+  ml-service/   FastAPI forecasting service + pytest tests
+packages/
+  types/        Shared API contracts (index.d.ts) used by api and web
+  eslint-config/, typescript-config/
+k8s/            Deployments, services, config, secret template (kustomize)
+docker-compose.yml
 ```
 
 ---
 
-## 🚀 Getting Started & Quick Setup
+## What it does
 
-Follow this step-by-step guide to run the entire ERP ecosystem locally.
+| Module | Implemented |
+|---|---|
+| **Finance** | Chart of accounts; journal entries (each line exactly one of debit/credit, debits = credits, posted in one transaction); invoices with gap-free numbering per year; expense claims with approve / reject / reimburse; monthly budgets vs actual; P&L report |
+| **HR & payroll** | Employee directory and org chart; leave requests with HR approval; clock-in / clock-out with hours worked; monthly payroll that creates the run and every payslip in one transaction (one run per month, enforced by the database); "my payslips" for employees |
+| **Supply chain** | Products and per-warehouse stock; stock movements that update stock atomically and can never go negative; purchase orders (draft → issued → received / cancelled); suppliers; 30-day demand forecast per SKU |
+| **CRM** | Customers, drag-and-drop lead pipeline, sales orders with status transitions |
+| **BI** | Monthly revenue, collected cash, expenses, payroll and net profit computed from invoices, expenses and payslips; cost breakdown; CSV export |
+| **Platform** | Role-based access, audit log of every write, in-app notifications (leave decisions, expense decisions, payslips, low stock), user administration |
 
-### Prerequisites
-* **Node.js** >= 22 LTS
-* **pnpm** >= 9
-* **Docker Desktop** running in the WSL2 backend
+### Forecasting
 
----
-
-### Step 1: Clone and Install Workspace Dependencies
-Installs monorepo packages, libraries, and setups correct symlinks automatically:
-```bash
-pnpm install
-```
-
-### Step 2: Spin Up Infrastructure Containers
-Start the PostgreSQL 16 database, Redis session store, and FastAPI ML microservice containers:
-```bash
-# Ensure Docker CLI context is set to default
-docker context use default
-
-# Start the infrastructure
-docker compose up -d
-```
-
-### Step 3: Configure Environment File
-Copy the example environment settings for the API Gateway:
-```bash
-cp apps/api/.env.example apps/api/.env
-```
-*(The default database connection `postgresql://amdox:amdox_dev_password@localhost:5432/amdox_erp` is fully configured out-of-the-box).*
-
-### Step 4: Run Migrations and Seed Database
-Sync PostgreSQL schema tables with Prisma ORM models and load synthetic enterprise test data:
-```bash
-pnpm --filter api run db:generate
-pnpm --filter api run db:migrate
-pnpm --filter api run db:seed
-```
-
-### Step 5: Boot Dev Servers
-Launch Next.js, Express, and active watches in parallel:
-```bash
-pnpm dev
-```
-
-* **Frontend Client**: `http://localhost:3000`
-* **Express API Gateway**: `http://localhost:4000`
-* **Python ML Forecaster**: `http://localhost:8000`
+The API sends the ml-service each SKU's real daily OUT quantities for the last 180 days plus current stock and reorder level. The service picks a model per SKU — **Prophet** for regular demand, **damped Holt** smoothing as fallback, a **recent moving average** for intermittent (mostly zero) demand — and returns predicted demand, stock-out risk and a reorder suggestion. Results are cached for an hour (in memory, per process).
 
 ---
 
-## 🔑 Administrative Access
+## Security model
 
-Log in to the landing page at `http://localhost:3000/login` with the pre-seeded enterprise administrative credentials:
-* **Email**: `admin@amdox.com`
-* **Password**: `Admin@1234`
+- **Authentication.** `POST /auth/login` returns a 15-minute access token (kept **in memory** in the browser, never in localStorage) and sets a 7-day refresh token as an `httpOnly`, `SameSite=Strict` cookie scoped to `/api/v1/auth`. On reload the app calls `/auth/refresh`, then validates the session with `/auth/me`.
+- **Refresh rotation.** Refresh tokens are stored as SHA-256 hashes (unique index). Every refresh rotates the token; presenting an already-used token again (after a 10-second race window) revokes **all** of that user's sessions. Logout revokes only the current session. Changing a user's role or disabling them revokes their sessions.
+- **CSRF.** Double-submit token: `GET /api/v1/csrf-token` sets an httpOnly cookie, and every POST/PUT/PATCH/DELETE must send the same value in `X-CSRF-Token`.
+- **Validation.** Every route validates body, params and query with zod (unknown keys rejected, sort fields whitelisted per model, `limit ≤ 100`). Errors map to 422 / 404 / 409 / 400; 500s never expose internals in production, and request bodies are never logged.
+- **Secrets.** The API refuses to start without two different 32+ character JWT secrets. There are no fallback secrets anywhere.
+- **Transport & headers.** helmet, CORS allowlist (`CORS_ORIGINS`), rate limits (global, login, refresh), `trust proxy` configurable; the web app sends a CSP whose `connect-src` is built from `NEXT_PUBLIC_API_URL`.
 
----
+### Roles
 
-## 🧪 Testing & Load Verification
+| Action | Allowed roles |
+|---|---|
+| Read most modules | any signed-in user (salaries only for SUPER_ADMIN, HR, FINANCE) |
+| Employees, payroll runs, leave decisions | SUPER_ADMIN, HR_MANAGER |
+| Ledger, invoices, budgets, expense decisions | SUPER_ADMIN, FINANCE_MANAGER |
+| Products, stock movements, POs, suppliers, forecast | SUPER_ADMIN, INVENTORY_MANAGER |
+| Customers, leads, sales orders | SUPER_ADMIN, SALES_REP |
+| Clock in/out, file leave, submit expenses | every role except READ_ONLY — **for themselves only** (HR/admin may act for others) |
+| Users, audit log, system health | SUPER_ADMIN |
 
-### 1. Jest Unit and Integration Suites
-Runs comprehensive tests verifying token auth rotation, double-entry financial checks, and controller middlewares:
-```bash
-pnpm test
-```
-* **Acceptance Status**: 100% Success (13/13 tests, 4/4 suites passing cleanly).
-
-### 2. k6 Load Testing
-Simulates high-throughput production load tests verifying P95 latency and capacity targets:
-```bash
-pnpm run load-test
-# Or manually run: k6 run k6-load-test.js
-```
-* **Load Scope**: Ramps up to **2,000 concurrent Virtual Users (VUs)**.
-* **Latency Check**: Asserts strict P95 response constraints under **500ms**.
+The matrix lives in `apps/api/src/middleware/roles.ts` and is covered by an integration test that checks 36 restricted routes return 403.
 
 ---
 
-## 🔐 Security, Compliance & SLAs
+## Getting started
 
-* **API Hardening**: `csurf` CSRF protection, Helmet security headers, slid-window rate limits, and secure parameterized Prisma query bindings are enforced on the Gateway layer.
-* **Multi-Tenant Session Integrity**: Request interceptors in `lib/axios.ts` inject secure JWT tokens, keeping multi-tenant transactions strictly isolated.
-* **GDPR Compliance (Art. 17)**: Employs a soft-delete database logic filtering all mutative resources through `isActive: true`, ensuring easy right-to-erasure workflows without breaking GL accounting integrity.
-* **SLA Targets**:
-  * **Target SLA**: 99.9% monthly uptime.
-  * **API Latency**: < 300ms P95 for all REST queries.
-  * **Throughput**: >= 2,000 concurrent active users.
-Updated by Navya 
+Prerequisites: **Node.js 22**, **pnpm 9** (`corepack enable`), **Docker**.
+
+```bash
+pnpm install --frozen-lockfile
+cp .env.example .env                    # compose: Postgres password, JWT secrets, ML token
+cp apps/api/.env.example apps/api/.env  # API when run with pnpm dev
+cp apps/web/.env.example apps/web/.env.local
+```
+
+Generate secrets with `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`. Use the **same** Postgres password and `ML_INTERNAL_TOKEN` in `.env` and `apps/api/.env`.
+
+### Option A — apps on your machine, infra in Docker (development)
+
+```bash
+pnpm infra:up                          # docker compose up -d → postgres :5432, ml-service :8000
+pnpm --filter api exec prisma migrate deploy
+pnpm --filter api db:seed              # demo data (optional)
+pnpm dev                               # api :4000 and web :3000 with hot reload
+```
+
+### Option B — everything in containers
+
+```bash
+pnpm stack:up                          # docker compose --profile app up -d --build
+docker compose --profile app run --rm api ./node_modules/.bin/tsx prisma/seed.ts   # demo data (optional)
+```
+
+The api container applies migrations on start. All ports are bound to `127.0.0.1`. Don't run Option A and B at the same time (both use 3000/4000).
+
+### Demo accounts (after seeding)
+
+| Email | Role | Password |
+|---|---|---|
+| admin@amdox.com | SUPER_ADMIN | `Admin@1234` (or `SEED_ADMIN_PASSWORD`) |
+| hr@amdox.com, finance@amdox.com, inventory@amdox.com, sales@amdox.com, employee@amdox.com, viewer@amdox.com | one per role | `Demo@1234` (or `SEED_DEMO_PASSWORD`) |
+
+Change these for anything other than a local demo.
+
+### Static demo (no backend)
+
+Build the web app with `NEXT_PUBLIC_USE_MOCKS=true` and Mock Service Worker answers every API call with sample data (any credentials sign in as a demo admin; writes are disabled). This is how the Vercel preview runs. Never enable it for a real deployment.
+
+---
+
+## Configuration
+
+**API** (`apps/api/.env`, validated at startup by `src/config/env.ts`):
+
+| Variable | Required | Default | Notes |
+|---|---|---|---|
+| `DATABASE_URL` | yes | — | PostgreSQL connection string |
+| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | yes | — | 32+ chars each, must differ |
+| `CORS_ORIGINS` | | `http://localhost:3000` | comma-separated browser origins |
+| `ML_SERVICE_URL` | | `http://localhost:8000` | |
+| `ML_INTERNAL_TOKEN` | for forecasts | — | 16+ chars, same value as the ml-service; without it the forecast endpoint returns 503 |
+| `ML_TIMEOUT_MS` | | `10000` | |
+| `TRUST_PROXY` | | `false` | `1` behind one reverse proxy |
+| `COOKIE_SECURE` | | `true` in production | set `false` only for plain-http local containers |
+| `ACCESS_TOKEN_TTL`, `REFRESH_TOKEN_TTL_DAYS` | | `15m`, `7` | |
+| `GLOBAL_RATE_LIMIT_MAX`, `AUTH_RATE_LIMIT_MAX`, `REFRESH_RATE_LIMIT_MAX` | | `500`, `10`, `60` | per IP per 15 min |
+| `LOG_LEVEL`, `PRISMA_LOG_QUERIES` | | `info`, `false` | |
+
+**Web** (`apps/web/.env.local`, read at build time): `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_USE_MOCKS`, optional `CSP_CONNECT_SRC`.
+
+**ML service**: `ML_INTERNAL_TOKEN` (required), `ML_CACHE_TTL_SECONDS` (3600), `ML_CACHE_MAX_ENTRIES` (256).
+
+**Compose** (`.env`): `POSTGRES_PASSWORD`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `ML_INTERNAL_TOKEN` are required; see `.env.example`.
+
+---
+
+## Scripts
+
+| Command | What it does |
+|---|---|
+| `pnpm dev` | api + web in watch mode |
+| `pnpm build` | build all packages |
+| `pnpm check-types` | TypeScript for `packages/types`, the API (incl. seed) and the web app |
+| `pnpm lint` | ESLint |
+| `pnpm test` | API unit + integration tests (needs Postgres, see below) |
+| `pnpm infra:up` / `pnpm stack:up` | compose infra only / full stack |
+| `pnpm --filter api db:migrate` | create a new migration in development (`prisma migrate dev`) |
+| `pnpm --filter api db:seed` | load demo data (re-runnable; history is generated once) |
+| `pnpm load-test` | k6 load test against the API (`k6` must be installed) |
+
+## Testing
+
+- **API** — Jest with two projects. `unit` mocks Prisma. `integration` runs Supertest against a **real PostgreSQL** database given by `TEST_DATABASE_URL` (default `postgresql://amdox:amdox_test@127.0.0.1:55432/amdox_test`); the URL must contain "test" because the suite resets that database. Quick local database:
+  ```bash
+  docker run -d --name amx_test_pg -e POSTGRES_USER=amdox -e POSTGRES_PASSWORD=amdox_test -e POSTGRES_DB=amdox_test -p 127.0.0.1:55432:5432 postgres:16-alpine
+  pnpm test
+  ```
+  Covered: the old sort/page crash, forged tokens, refresh rotation and reuse detection, logout revocation, CSRF on refresh, 403s for 36 routes, ownership rules, journal balance and one-sided lines, stock that would go negative (409) and concurrent oversell, duplicate and concurrent payroll runs (409), concurrent invoice numbering, BI totals vs data, forecast proxy timeout and shared secret.
+- **ML service** — `cd apps/ml-service && pip install -r requirements-dev.txt && python -m pytest -q tests`.
+- **Load** — `pnpm load-test` (raise `GLOBAL_RATE_LIMIT_MAX` on the API first; the default limit will throttle a load test). No throughput or latency figures are claimed until it has been run against a real environment.
+
+CI (`.github/workflows/ci.yml`) runs all of the above on Node 22 with a Postgres service: frozen install, `prisma migrate deploy`, schema-drift check, type-check, lint, tests, seed, build, pytest, and a Docker image build.
+
+---
+
+## Deployment
+
+- **Images**: `apps/api/Dockerfile`, `apps/web/Dockerfile` (pass `--build-arg NEXT_PUBLIC_API_URL=…`), `apps/ml-service/Dockerfile`. All run as non-root with health checks.
+- **Kubernetes**: `kubectl apply -k k8s/` after creating the `amdox-erp-secrets` Secret (see `k8s/secret.example.yaml`). The API applies migrations in an init container; the ml-service only accepts traffic from the API (NetworkPolicy). PostgreSQL is expected to be a managed service.
+
+## Limitations
+
+- **Single organisation.** Multi-tenancy (tenant isolation in the schema and queries) is planned, not implemented.
+- **No e-mail.** Forgot-password only logs the request; reset-password returns 501. New users get a one-time temporary password shown to the admin.
+- **Purchase orders have no line items**, so receiving a PO does not change stock — record an IN movement.
+- **Flat payroll rates** (20 % tax, 5 % insurance) for demonstration.
+- **Rate limits and the forecast cache are per process**; with several API replicas each enforces its own limit.
+- Access tokens stay valid for up to 15 minutes after logout (refresh tokens are revoked immediately).
