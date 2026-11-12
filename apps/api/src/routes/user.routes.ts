@@ -1,11 +1,12 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth.middleware';
+import { requireAuth, requireRole } from '../middleware/auth.middleware';
+import { ROLES } from '../middleware/roles';
 import { endpoint } from '../middleware/validate';
 import { ok, listQuery, paging, buildMeta } from '../utils/response';
 import { prisma } from '../utils/prisma';
 
 const router = Router();
-router.use(requireAuth);
+router.use(requireAuth, requireRole(...ROLES.ADMIN));
 
 router.get('/', ...endpoint({ query: listQuery(['createdAt', 'email', 'role']) }, async ({ query }, _req, res) => {
   const [users, total] = await Promise.all([

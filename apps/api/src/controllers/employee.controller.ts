@@ -3,6 +3,16 @@ import { prisma } from '../utils/prisma';
 import { ok, created, listQuery, paging, buildMeta } from '../utils/response';
 import { endpoint, idParams, uuid } from '../middleware/validate';
 import { notFound } from '../utils/httpError';
+import { ROLES, hasRole } from '../middleware/roles';
+import type { Request } from 'express';
+
+// Salaries are visible to HR, finance and admins only.
+function redactSalary<T extends { grossSalary?: unknown }>(req: Request, e: T): T {
+  if (hasRole(req, ROLES.PAYROLL_VIEW)) return e;
+  const copy = { ...e };
+  delete copy.grossSalary;
+  return copy;
+}
 
 const createSchema = z.object({
   name: z.string().trim().min(1).max(200),
@@ -17,7 +27,7 @@ const createSchema = z.object({
 
 const listSchema = listQuery(['createdAt', 'name', 'email', 'joinDate', 'grossSalary']);
 
-export const listEmployees = endpoint({ query: listSchema }, async ({ query }, _req, res) => {
+export const listEmployees = endpoint({ query: listSchema }, async ({ query }, req, res) => {
   const where = {
     isArchived: false,
     ...(query.search && {
@@ -39,16 +49,16 @@ export const listEmployees = endpoint({ query: listSchema }, async ({ query }, _
     prisma.employee.count({ where }),
   ]);
 
-  return ok(res, employees, 'Employees retrieved', buildMeta(query.page, query.limit, total));
+  return ok(res, employees.map((e) => redactSalary(req, e)), 'Employees retrieved', buildMeta(query.page, query.limit, total));
 });
 
-export const getEmployee = endpoint({ params: idParams }, async ({ params }, _req, res) => {
+export const getEmployee = endpoint({ params: idParams }, async ({ params }, req, res) => {
   const employee = await prisma.employee.findUnique({
     where: { id: params.id },
     include: { department: true },
   });
   if (!employee) throw notFound('Employee');
-  return ok(res, employee);
+  return ok(res, redactSalary(req, employee));
 });
 
 export const createEmployee = endpoint({ body: createSchema }, async ({ body }, _req, res) => {

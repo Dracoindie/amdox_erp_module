@@ -1,18 +1,19 @@
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../middleware/auth.middleware';
 import { endpoint, noInput } from '../middleware/validate';
+import { ROLES } from '../middleware/roles';
 import { ok, created } from '../utils/response';
 import { prisma } from '../utils/prisma';
 
 const router = Router();
 router.use(requireAuth);
 
-router.get('/', ...endpoint({ query: noInput }, async (_input, _req, res) => {
+router.get('/', requireRole(...ROLES.PAYROLL_VIEW), ...endpoint({ query: noInput }, async (_input, _req, res) => {
   const runs = await prisma.payrollRun.findMany({ orderBy: { createdAt: 'desc' }, take: 12 });
   return ok(res, runs);
 }));
 
-router.post('/run', requireRole('SUPER_ADMIN', 'HR_MANAGER'), ...endpoint({ body: noInput }, async (_input, req, res) => {
+router.post('/run', requireRole(...ROLES.HR), ...endpoint({ body: noInput }, async (_input, req, res) => {
   const employees = await prisma.employee.findMany({ where: { isArchived: false } });
   const TAX_RATE = 0.2;
   const INS_RATE = 0.05;

@@ -2,24 +2,26 @@ import { Router } from 'express';
 import {
   listJournalEntries, createJournalEntry,
   listInvoices, createInvoice, updateInvoiceStatus,
-  listExpenses, createExpense
+  listExpenses, createExpense, updateExpenseStatus,
 } from '../controllers/finance.controller';
 import { requireAuth, requireRole } from '../middleware/auth.middleware';
+import { ROLES } from '../middleware/roles';
 
 const router = Router();
 router.use(requireAuth);
 
-// General Ledger
-router.get('/ledger',     ...listJournalEntries);
-router.post('/ledger',    requireRole('SUPER_ADMIN','FINANCE_MANAGER'), ...createJournalEntry);
+// General ledger
+router.get('/ledger', ...listJournalEntries);
+router.post('/ledger', requireRole(...ROLES.FINANCE), ...createJournalEntry);
 
 // Invoices
-router.get('/invoices',         ...listInvoices);
-router.post('/invoices',        requireRole('SUPER_ADMIN','FINANCE_MANAGER'), ...createInvoice);
-router.patch('/invoices/:id',   requireRole('SUPER_ADMIN','FINANCE_MANAGER'), ...updateInvoiceStatus);
+router.get('/invoices', ...listInvoices);
+router.post('/invoices', requireRole(...ROLES.FINANCE), ...createInvoice);
+router.patch('/invoices/:id', requireRole(...ROLES.FINANCE), ...updateInvoiceStatus);
 
-// Expenses
-router.get('/expenses',   ...listExpenses);
-router.post('/expenses',  ...createExpense);
+// Expenses: any staff member submits; finance approves / rejects / reimburses
+router.get('/expenses', ...listExpenses);
+router.post('/expenses', requireRole(...ROLES.STAFF), ...createExpense);
+router.patch('/expenses/:id/status', requireRole(...ROLES.FINANCE), ...updateExpenseStatus);
 
 export default router;

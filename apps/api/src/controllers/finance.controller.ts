@@ -3,6 +3,7 @@ import { prisma } from '../utils/prisma';
 import { ok, created, listQuery, paging, buildMeta } from '../utils/response';
 import { endpoint, idParams, uuid, isoDate } from '../middleware/validate';
 import { HttpError } from '../utils/httpError';
+import { ROLES, hasRole } from '../middleware/roles';
 
 // ── Journal Entries ───────────────────────────────────────────────────────────
 
@@ -117,12 +118,22 @@ const expenseSchema = z.object({
   description: z.string().max(1000).optional(),
 }).strict();
 
-const expenseQuery = listQuery(['createdAt', 'amount', 'category']);
+const EXPENSE_STATUSES = ['SUBMITTED', 'APPROVED', 'REJECTED', 'REIMBURSED'] as const;
 
-export const listExpenses = endpoint({ query: expenseQuery }, async ({ query }, _req, res) => {
+const expenseQuery = listQuery(['createdAt', 'amount', 'category']).extend({
+  status: z.enum(EXPENSE_STATUSES).optional(),
+});
+
+// Finance (and read-only auditors) see every expense; staff see their own.
+export const listExpenses = endpoint({ query: expenseQuery }, async ({ query }, req, res) => {
+  const seesAll = hasRole(req, [...ROLES.FINANCE, 'READ_ONLY']);
+  const where = {
+    ...(seesAll ? {} : { submittedBy: req.user!.userId }),
+    ...(query.status && { status: query.status }),
+  };
   const [expenses, total] = await Promise.all([
-    prisma.expense.findMany({ ...paging(query), orderBy: { [query.sort]: query.order } }),
-    prisma.expense.count(),
+    prisma.expense.findMany({ where, ...paging(query), orderBy: { [query.sort]: query.order } }),
+    prisma.expense.count({ where }),
   ]);
   return ok(res, expenses, 'Expenses retrieved', buildMeta(query.page, query.limit, total));
 });
@@ -131,3 +142,29 @@ export const createExpense = endpoint({ body: expenseSchema }, async ({ body }, 
   const expense = await prisma.expense.create({ data: { ...body, submittedBy: req.user!.userId } });
   return created(res, expense, 'Expense submitted');
 });
+
+// Allowed transitions: SUBMITTED → APPROVED | REJECTED, APPROVED → REIMBURSED
+const NEXT_STATUS: Record<string, readonly string[]> = {
+  SUBMITTED: ['APPROVED', 'REJECTED'],
+  APPROVED: ['REIMBURSED'],
+};
+
+export const updateExpenseStatus = endpoint(
+  { params: idParams, body: z.object({ status: z.enum(['APPROVED', 'REJECTED', 'REIMBURSED']) }).strict() },
+  async ({ params, body }, req, res) => {
+    const expense = await prisma.expense.findUnique({ where: { id: params.id } });
+    if (!expense) throw new HttpError(404, 'Expense not found');
+    if (expense.submittedBy === req.user!.userId) {
+      throw new HttpError(403, 'You cannot approve your own expense');
+    }
+    if (!NEXT_STATUS[expense.status]?.includes(body.status)) {
+      throw new HttpError(409, `Cannot move an expense from ${expense.status} to ${body.status}`);
+    }
+    const { count } = await prisma.expense.updateMany({
+      where: { id: params.id, status: expense.status },
+      data: { status: body.status, approvedBy: req.user!.userId },
+    });
+    if (count === 0) throw new HttpError(409, 'Expense was changed by someone else; reload and retry');
+    return ok(res, await prisma.expense.findUniqueOrThrow({ where: { id: params.id } }), 'Expense updated');
+  },
+);

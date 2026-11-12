@@ -2,13 +2,14 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, requireRole } from '../middleware/auth.middleware';
 import { endpoint, idParams, noInput, uuid } from '../middleware/validate';
+import { ROLES } from '../middleware/roles';
 import { ok, created } from '../utils/response';
 import { prisma } from '../utils/prisma';
 
 const router = Router();
 router.use(requireAuth);
 
-const INVENTORY = ['SUPER_ADMIN', 'INVENTORY_MANAGER'] as const;
+const INVENTORY = ROLES.INVENTORY;
 
 const orderSchema = z.object({
   supplierId: uuid,
