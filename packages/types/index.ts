@@ -74,3 +74,21 @@ export interface TenantInfo {
   name: string;
   subscriptionTier: "Standard" | "Enterprise";
 }
+
+export type Role =
+  | "SUPER_ADMIN"
+  | "HR_MANAGER"
+  | "FINANCE_MANAGER"
+  | "INVENTORY_MANAGER"
+  | "SALES_REP"
+  | "EMPLOYEE"
+  | "READ_ONLY";
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  role: Role;
+  isActive?: boolean;
+  createdAt?: string;
+  employee?: { id: string; name: string } | null;
+}

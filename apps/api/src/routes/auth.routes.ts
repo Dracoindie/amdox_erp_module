@@ -2,23 +2,35 @@ import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { login, logout, refresh, forgotPassword, resetPassword, me } from '../controllers/auth.controller';
 import { requireAuth } from '../middleware/auth.middleware';
+import { env } from '../config/env';
 
 const router = Router();
 
-// Strict rate-limit for auth endpoints: 10 req / 15 min per IP
+const limitMessage = { success: false, message: 'Too many requests, please try again later' };
+
+// Credential endpoints: strict (default 10 / 15 min / IP)
 const authLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: { success: false, message: 'Too many auth requests, please try again later' },
-  standardHeaders: true,
+  limit: env.AUTH_RATE_LIMIT_MAX,
+  message: limitMessage,
+  standardHeaders: 'draft-7',
   legacyHeaders: false,
 });
 
-router.post('/login',           authLimit, login);
-router.post('/logout',          requireAuth, logout);
-router.post('/refresh',         refresh);
-router.post('/forgot-password', authLimit, forgotPassword);
-router.post('/reset-password',  authLimit, resetPassword);
-router.get('/me',               requireAuth, me);
+// Refresh: looser (default 60 / 15 min / IP) — called every ~15 min per tab
+const refreshLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: env.REFRESH_RATE_LIMIT_MAX,
+  message: limitMessage,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+});
+
+router.post('/login', authLimit, ...login);
+router.post('/refresh', refreshLimit, ...refresh);
+router.post('/logout', refreshLimit, ...logout);
+router.post('/forgot-password', authLimit, ...forgotPassword);
+router.post('/reset-password', authLimit, ...resetPassword);
+router.get('/me', requireAuth, ...me);
 
 export default router;

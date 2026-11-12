@@ -1,12 +1,30 @@
 /** @type {import('ts-jest').JestConfigWithTsJest} */
-// eslint-disable-next-line no-undef
-module.exports = {
+// Two projects:
+//   unit         — Prisma is mocked, no database needed
+//   integration  — real Postgres (TEST_DATABASE_URL), migrated once per run
+// Run one with:  pnpm test --selectProjects unit
+const base = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  testMatch: ['**/__tests__/**/*.test.ts'],
-  setupFilesAfterEnv: ['<rootDir>/src/__tests__/setup.ts'],
-  moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/$1',
-  },
+  setupFiles: ['<rootDir>/src/__tests__/env.setup.ts'],
   clearMocks: true,
+};
+
+// eslint-disable-next-line no-undef
+module.exports = {
+  projects: [
+    {
+      ...base,
+      displayName: 'unit',
+      testMatch: ['<rootDir>/src/__tests__/*.test.ts'],
+      setupFilesAfterEnv: ['<rootDir>/src/__tests__/setup.ts'],
+    },
+    {
+      ...base,
+      displayName: 'integration',
+      testMatch: ['<rootDir>/src/__tests__/integration/**/*.test.ts'],
+      globalSetup: '<rootDir>/src/__tests__/integration/globalSetup.ts',
+      setupFilesAfterEnv: ['<rootDir>/src/__tests__/integration/afterEnv.ts'],
+    },
+  ],
 };

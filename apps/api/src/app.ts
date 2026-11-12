@@ -1,3 +1,7 @@
+// env must be imported first: it loads .env and validates it before anything
+// else (logger, Prisma, JWT) reads process.env.
+import { env } from './config/env';
+
 import express, { type Application } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -6,111 +10,109 @@ import morgan from 'morgan';
 import { rateLimit } from 'express-rate-limit';
 
 import { logger } from './utils/logger';
+import { prisma } from './utils/prisma';
 import { errorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
+import { csrfProtection, issueCsrfToken, CSRF_HEADER } from './middleware/csrf';
 
-// Routes
-import authRoutes      from './routes/auth.routes';
-import userRoutes      from './routes/user.routes';
-import employeeRoutes  from './routes/employee.routes';
+import authRoutes from './routes/auth.routes';
+import userRoutes from './routes/user.routes';
+import employeeRoutes from './routes/employee.routes';
 import attendanceRoutes from './routes/attendance.routes';
-import leaveRoutes     from './routes/leave.routes';
-import payrollRoutes   from './routes/payroll.routes';
+import leaveRoutes from './routes/leave.routes';
+import payrollRoutes from './routes/payroll.routes';
 import inventoryRoutes from './routes/inventory.routes';
-import purchaseRoutes  from './routes/purchase.routes';
-import financeRoutes   from './routes/finance.routes';
-import customerRoutes  from './routes/customer.routes';
-import leadRoutes      from './routes/lead.routes';
+import purchaseRoutes from './routes/purchase.routes';
+import financeRoutes from './routes/finance.routes';
+import customerRoutes from './routes/customer.routes';
+import leadRoutes from './routes/lead.routes';
 import notificationRoutes from './routes/notification.routes';
-import adminRoutes     from './routes/admin.routes';
-import biRoutes        from './routes/bi.routes';
+import adminRoutes from './routes/admin.routes';
+import biRoutes from './routes/bi.routes';
 
 const app: Application = express();
 
-// ─── Security Middleware ──────────────────────────────────────────────────────
+app.set('trust proxy', env.trustProxy);
+app.disable('x-powered-by');
 
-app.use(helmet({
-  contentSecurityPolicy: false, // handled by Next.js for frontend
-}));
+// ─── Security ─────────────────────────────────────────────────────────────────
 
+app.use(helmet({ contentSecurityPolicy: false })); // the API serves JSON only
+
+const allowedOrigins = new Set(env.corsOrigins);
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin(origin, cb) {
+    // Non-browser clients (curl, server-to-server) send no Origin header.
+    if (!origin || allowedOrigins.has(origin)) return cb(null, true);
+    return cb(null, false);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'CSRF-Token', 'X-CSRF-Token'],
+  allowedHeaders: ['Content-Type', 'Authorization', CSRF_HEADER],
 }));
 
-// Global rate limit
 app.use(rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 min
-  max: 500,
-  standardHeaders: true,
+  windowMs: 15 * 60 * 1000,
+  limit: env.GLOBAL_RATE_LIMIT_MAX,
+  standardHeaders: 'draft-7',
   legacyHeaders: false,
+  message: { success: false, message: 'Too many requests, please try again later' },
 }));
 
-// ─── Body Parsing ─────────────────────────────────────────────────────────────
+// ─── Parsing & logging ────────────────────────────────────────────────────────
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 
-// ─── Logging ─────────────────────────────────────────────────────────────────
-
-app.use(morgan('combined', {
-  stream: { write: (msg) => logger.info(msg.trim()) },
-}));
-
-// ─── CSRF Protection ──────────────────────────────────────────────────────────
-
-import csurf from 'csurf';
-const csrfProtection = csurf({ cookie: { httpOnly: true, secure: process.env.NODE_ENV === 'production' } });
-
-// Apply CSRF to all routes after cookie parser
-if (process.env.NODE_ENV !== 'test') {
-  app.use(csrfProtection as unknown as express.RequestHandler);
+if (!env.isTest) {
+  app.use(morgan('combined', { stream: { write: (msg) => logger.http(msg.trim()) } }));
 }
 
-app.get('/api/v1/csrf-token', (req, res) => {
-  res.json({ success: true, data: { csrfToken: (req as unknown as { csrfToken?: () => string }).csrfToken?.() ?? '' } });
-});
+// ─── Health (no CSRF, no auth) ────────────────────────────────────────────────
 
-// ─── Root Route ───────────────────────────────────────────────────────────────
+const health = express.Router();
+health.get('/', (_req, res) => {
+  res.json({ success: true, message: 'AMX-ERP-2026 API is healthy', data: { timestamp: new Date().toISOString(), version: '0.2.0' } });
+});
+health.get('/ready', async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ success: true, message: 'ready', data: { database: 'connected' } });
+  } catch {
+    res.status(503).json({ success: false, message: 'Database unavailable' });
+  }
+});
+app.use('/health', health);
+app.use('/api/v1/health', health);
 
 app.get('/', (_req, res) => {
-  res.send('AMX-ERP-2026 API is running. Please access the dashboard at http://localhost:3000');
+  res.json({ success: true, message: 'AMX-ERP-2026 API. See /health and /api/v1.', data: null });
 });
 
-// ─── Health Check ─────────────────────────────────────────────────────────────
+// ─── CSRF ─────────────────────────────────────────────────────────────────────
 
-app.get('/health', (_req, res) => {
-  res.json({
-    success: true,
-    message: 'AMX-ERP-2026 API is healthy',
-    timestamp: new Date().toISOString(),
-    version: '0.1.0',
-  });
-});
+app.get('/api/v1/csrf-token', issueCsrfToken);
+app.use(csrfProtection);
 
-// ─── API Routes ───────────────────────────────────────────────────────────────
+// ─── API routes ───────────────────────────────────────────────────────────────
 
 const BASE = '/api/v1';
-
-app.use(`${BASE}/auth`,          authRoutes);
-app.use(`${BASE}/users`,         userRoutes);
-app.use(`${BASE}/employees`,     employeeRoutes);
-app.use(`${BASE}/attendance`,    attendanceRoutes);
-app.use(`${BASE}/leave-requests`,leaveRoutes);
-app.use(`${BASE}/payroll`,       payrollRoutes);
-app.use(`${BASE}/inventory`,     inventoryRoutes);
-app.use(`${BASE}/purchases`,     purchaseRoutes);
-app.use(`${BASE}/finance`,       financeRoutes);
-app.use(`${BASE}/customers`,     customerRoutes);
-app.use(`${BASE}/leads`,         leadRoutes);
+app.use(`${BASE}/auth`, authRoutes);
+app.use(`${BASE}/users`, userRoutes);
+app.use(`${BASE}/employees`, employeeRoutes);
+app.use(`${BASE}/attendance`, attendanceRoutes);
+app.use(`${BASE}/leave-requests`, leaveRoutes);
+app.use(`${BASE}/payroll`, payrollRoutes);
+app.use(`${BASE}/inventory`, inventoryRoutes);
+app.use(`${BASE}/purchases`, purchaseRoutes);
+app.use(`${BASE}/finance`, financeRoutes);
+app.use(`${BASE}/customers`, customerRoutes);
+app.use(`${BASE}/leads`, leadRoutes);
 app.use(`${BASE}/notifications`, notificationRoutes);
-app.use(`${BASE}/admin`,         adminRoutes);
-app.use(`${BASE}/bi`,            biRoutes);
+app.use(`${BASE}/admin`, adminRoutes);
+app.use(`${BASE}/bi`, biRoutes);
 
-// ─── Error Handling ───────────────────────────────────────────────────────────
+// ─── Errors ───────────────────────────────────────────────────────────────────
 
 app.use(notFound);
 app.use(errorHandler);

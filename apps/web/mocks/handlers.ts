@@ -25,9 +25,18 @@ export const mockLedger: JournalEntry[] = [
   }
 ];
 
+// The demo "session" lives in sessionStorage so a reload keeps you signed in.
+const MOCK_USER = { id: 'mock-admin-id', email: 'demo@amdox.com', role: 'SUPER_ADMIN' as const };
+function hasMockSession() {
+  try { return sessionStorage.getItem('amx_mock_session') === '1'; } catch { return false; }
+}
+function setMockSession(on: boolean) {
+  try { if (on) sessionStorage.setItem('amx_mock_session', '1'); else sessionStorage.removeItem('amx_mock_session'); } catch { /* ignore */ }
+}
+
 export const handlers = [
   // ── CSRF Token Mock ──────────────────────────────────────────
-  http.get('/api/v1/csrf-token', () => {
+  http.get('*/api/v1/csrf-token', () => {
     return HttpResponse.json({
       success: true,
       data: {
@@ -37,8 +46,23 @@ export const handlers = [
   }),
 
   // ── Login Mock ───────────────────────────────────────────────
-  http.post('/api/v1/auth/login', async ({ request }) => {
+  // Demo only: any credentials sign in as a demo admin.
+  http.post('*/api/v1/auth/refresh', () => {
+    if (!hasMockSession()) return HttpResponse.json({ success: false, message: 'No session' }, { status: 401 });
+    return HttpResponse.json({ success: true, message: 'Token refreshed', data: { accessToken: 'mock-access-token', user: MOCK_USER } });
+  }),
+  http.get('*/api/v1/auth/me', () => {
+    if (!hasMockSession()) return HttpResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
+    return HttpResponse.json({ success: true, message: 'Success', data: { ...MOCK_USER, isActive: true, employee: { id: 'mock-emp', name: 'Demo Admin' } } });
+  }),
+  http.post('*/api/v1/auth/logout', () => {
+    setMockSession(false);
+    return HttpResponse.json({ success: true, message: 'Logged out successfully', data: null });
+  }),
+
+  http.post('*/api/v1/auth/login', async ({ request }) => {
     const { email } = await request.json() as any;
+    setMockSession(true);
     
     return HttpResponse.json({
       success: true,
@@ -55,7 +79,7 @@ export const handlers = [
   }),
 
   // ── Products Mock (matching SQL seeds) ───────────────────────
-  http.get('/api/v1/inventory/products', () => {
+  http.get('*/api/v1/inventory/products', () => {
     return HttpResponse.json({
       success: true,
       data: [
@@ -96,7 +120,7 @@ export const handlers = [
   }),
 
   // ── AI Prophet Time-Series Forecast Mock ─────────────────────
-  http.post('/api/v1/inventory/forecast/demand', () => {
+  http.post('*/api/v1/inventory/forecast/demand', () => {
     const today = new Date();
     const generateTimeSeries = (sku: string) => {
       const points = [];
@@ -172,7 +196,7 @@ export const handlers = [
   }),
 
   // ── Suppliers List Mock ──────────────────────────────────────
-  http.get('/api/v1/purchases/suppliers', () => {
+  http.get('*/api/v1/purchases/suppliers', () => {
     return HttpResponse.json({
       success: true,
       data: [
@@ -184,7 +208,7 @@ export const handlers = [
   }),
 
   // ── Purchase Orders List Mock ────────────────────────────────
-  http.get('/api/v1/purchases/orders', () => {
+  http.get('*/api/v1/purchases/orders', () => {
     return HttpResponse.json({
       success: true,
       data: [
@@ -196,7 +220,7 @@ export const handlers = [
   }),
 
   // ── General Ledger Mock ──────────────────────────────────────
-  http.get('/api/v1/finance/ledger', () => {
+  http.get('*/api/v1/finance/ledger', () => {
     return HttpResponse.json({
       success: true,
       data: mockLedger
@@ -204,7 +228,7 @@ export const handlers = [
   }),
 
   // ── Confirmation Sagas Mocks ─────────────────────────────────
-  http.post('/api/v1/payroll/confirm', async ({ request }) => {
+  http.post('*/api/v1/payroll/confirm', async ({ request }) => {
     const { totalNet, totalTaxes } = await request.json() as any;
     
     // Outbox Pattern: Payroll confirmation triggers Finance Ledger entries
@@ -233,7 +257,7 @@ export const handlers = [
     return HttpResponse.json({ success: true });
   }),
 
-  http.post('/api/v1/scm/purchase', async ({ request }) => {
+  http.post('*/api/v1/scm/purchase', async ({ request }) => {
     const { amount, description } = await request.json() as any;
     
     // Outbox Pattern: SCM PO creation triggers Finance Ledger AP

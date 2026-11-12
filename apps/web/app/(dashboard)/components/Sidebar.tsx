@@ -6,6 +6,12 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { logout } from '../../../lib/auth';
+import { useAuthUser } from '../../../lib/useAuth';
+
+function initials(text: string) {
+  return text.split(/[\s.@_-]+/).filter(Boolean).slice(0, 2).map((p) => p[0]!.toUpperCase()).join('');
+}
 
 const navigation = [
   { name: 'Dashboard',            icon: LayoutDashboard, href: '/' },
@@ -24,10 +30,16 @@ export function Sidebar() {
   const isActive = (href: string) =>
     href === '/' ? pathname === '/' : pathname.startsWith(href);
 
-  const handleSignOut = () => {
-    localStorage.removeItem('amx_access_token');
-    localStorage.removeItem('amx_user');
-    router.push('/login');
+  const user = useAuthUser();
+  const displayName = user?.employee?.name ?? user?.email ?? '';
+  const roleLabel = user?.role.replace(/_/g, ' ').toLowerCase() ?? '';
+
+  const handleSignOut = async () => {
+    try {
+      await logout();
+    } finally {
+      router.replace('/login');
+    }
   };
 
   return (
@@ -76,11 +88,11 @@ export function Sidebar() {
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-200 dark:bg-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 shadow-inner border border-slate-300 dark:border-slate-600">
-              AD
+              {initials(displayName) || '?'}
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-bold text-slate-900 dark:text-white">Admin User</p>
-              <p className="truncate text-[10px] font-medium text-[#ff5a00] uppercase tracking-wider">Super Admin</p>
+              <p className="truncate text-sm font-bold text-slate-900 dark:text-white">{displayName}</p>
+              <p className="truncate text-[10px] font-medium text-[#ff5a00] uppercase tracking-wider">{roleLabel}</p>
             </div>
           </div>
           <button 

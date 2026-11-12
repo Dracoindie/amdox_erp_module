@@ -1,7 +1,8 @@
-import jwt from 'jsonwebtoken';
+import crypto from 'node:crypto';
+import jwt, { type SignOptions } from 'jsonwebtoken';
+import { env } from '../config/env';
 
-const ACCESS_SECRET  = process.env.JWT_ACCESS_SECRET  || 'amdox-access-secret-change-in-prod';
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'amdox-refresh-secret-change-in-prod';
+// Secrets come only from the validated environment — there are no fallbacks.
 
 export interface TokenPayload {
   userId: string;
@@ -9,18 +10,47 @@ export interface TokenPayload {
   role: string;
 }
 
-export function signAccessToken(payload: TokenPayload): string {
-  return jwt.sign(payload, ACCESS_SECRET, { expiresIn: '15m' });
+export interface RefreshPayload {
+  sub: string; // userId
+  fam: string; // session family (one per login)
+  jti: string; // unique per token, so every token hashes differently
 }
 
-export function signRefreshToken(payload: TokenPayload): string {
-  return jwt.sign(payload, REFRESH_SECRET, { expiresIn: '7d' });
+const ALG = 'HS256' as const;
+
+export function signAccessToken(payload: TokenPayload): string {
+  return jwt.sign(payload, env.JWT_ACCESS_SECRET, {
+    algorithm: ALG,
+    expiresIn: env.ACCESS_TOKEN_TTL as SignOptions['expiresIn'],
+  });
 }
 
 export function verifyAccessToken(token: string): TokenPayload {
-  return jwt.verify(token, ACCESS_SECRET) as TokenPayload;
+  const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET, { algorithms: [ALG] });
+  if (typeof decoded !== 'object' || !decoded || typeof decoded.userId !== 'string' || typeof decoded.role !== 'string') {
+    throw new Error('Malformed access token');
+  }
+  return { userId: decoded.userId, email: String(decoded.email ?? ''), role: decoded.role };
 }
 
-export function verifyRefreshToken(token: string): TokenPayload {
-  return jwt.verify(token, REFRESH_SECRET) as TokenPayload;
+export function signRefreshToken(userId: string, familyId: string): string {
+  const payload: RefreshPayload = { sub: userId, fam: familyId, jti: crypto.randomUUID() };
+  return jwt.sign(payload, env.JWT_REFRESH_SECRET, {
+    algorithm: ALG,
+    expiresIn: `${env.REFRESH_TOKEN_TTL_DAYS}d`,
+  });
+}
+
+export function verifyRefreshToken(token: string): RefreshPayload {
+  const decoded = jwt.verify(token, env.JWT_REFRESH_SECRET, { algorithms: [ALG] });
+  if (typeof decoded !== 'object' || !decoded || typeof decoded.sub !== 'string' || typeof decoded.fam !== 'string') {
+    throw new Error('Malformed refresh token');
+  }
+  return { sub: decoded.sub, fam: decoded.fam, jti: String(decoded.jti) };
+}
+
+// SHA-256 (not bcrypt): refresh tokens are long random values, so a fast hash
+// is safe, and it lets us look a session up directly via a unique index.
+export function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
 }

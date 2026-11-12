@@ -1,123 +1,99 @@
-import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosError, type AxiosInstance, type InternalAxiosRequestConfig } from 'axios';
 
-const getApiUrl = () => {
-  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
-  if (typeof window !== 'undefined') {
-    // If not running on localhost, use relative pathing to bypass Mixed Content rules and let MSW handle it
-    if (!window.location.hostname.includes('localhost')) {
-      return '';
-    }
+// NEXT_PUBLIC_API_URL is baked in at build time. With mocks enabled and no URL
+// set, requests stay relative so MSW can answer them.
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ??
+  (process.env.NEXT_PUBLIC_USE_MOCKS === 'true' ? '' : 'http://localhost:4000');
+
+export const API_BASE = `${API_URL}/api/v1`;
+
+const UNSAFE = new Set(['post', 'put', 'patch', 'delete']);
+
+// ── CSRF (double-submit) ──────────────────────────────────────────────────────
+
+let csrfToken: Promise<string> | null = null;
+
+function getCsrfToken(force = false): Promise<string> {
+  if (!csrfToken || force) {
+    csrfToken = axios
+      .get(`${API_BASE}/csrf-token`, { withCredentials: true })
+      .then((res) => res.data.data.csrfToken as string)
+      .catch((err) => {
+        csrfToken = null;
+        throw err;
+      });
   }
-  return 'http://localhost:4000';
-};
-
-const API_URL = getApiUrl();
-
-export const api = axios.create({
-  baseURL: `${API_URL}/api/v1`,
-  withCredentials: true,
-  headers: { 'Content-Type': 'application/json' },
-});
-
-let csrfTokenPromise: Promise<string> | null = null;
-
-async function getCsrfToken() {
-  if (!csrfTokenPromise) {
-    csrfTokenPromise = axios.get(`${API_URL}/api/v1/csrf-token`, { withCredentials: true })
-      .then(res => res.data.data.csrfToken)
-      .catch(() => '');
-  }
-  return csrfTokenPromise;
+  return csrfToken;
 }
 
-// ── Request interceptor: attach Bearer token and CSRF ──────────────────────────────────
-api.interceptors.request.use(
-  async (config: InternalAxiosRequestConfig) => {
-    if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('amx_access_token');
-      if (token && config.headers) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-      
-      if (['post', 'put', 'patch', 'delete'].includes(config.method?.toLowerCase() || '')) {
-        const csrf = await getCsrfToken();
-        if (csrf && config.headers) {
-          config.headers['CSRF-Token'] = csrf;
-        }
-      }
+function isCsrfFailure(error: AxiosError) {
+  return error.response?.status === 403 && (error.response.data as any)?.message === 'Invalid CSRF token';
+}
+
+function withCsrf(instance: AxiosInstance) {
+  instance.interceptors.request.use(async (config) => {
+    if (UNSAFE.has(config.method?.toLowerCase() ?? '')) {
+      config.headers.set('X-CSRF-Token', await getCsrfToken());
     }
     return config;
-  },
-  (error) => Promise.reject(error)
-);
-
-// ── Response interceptor: auto-refresh on 401 ────────────────────────────────
-let isRefreshing = false;
-let pendingQueue: Array<{
-  resolve: (token: string) => void;
-  reject: (err: unknown) => void;
-}> = [];
-
-function processQueue(error: unknown, token: string | null = null) {
-  pendingQueue.forEach(({ resolve, reject }) => {
-    if (error) {
-      reject(error);
-    } else if (token) {
-      resolve(token);
-    }
   });
-  pendingQueue = [];
+  // The CSRF cookie can expire; fetch a fresh token and retry once.
+  instance.interceptors.response.use(undefined, async (error: AxiosError) => {
+    const original = error.config as (InternalAxiosRequestConfig & { _csrfRetry?: boolean }) | undefined;
+    if (original && !original._csrfRetry && isCsrfFailure(error)) {
+      original._csrfRetry = true;
+      original.headers.set('X-CSRF-Token', await getCsrfToken(true));
+      return instance(original);
+    }
+    return Promise.reject(error);
+  });
+  return instance;
 }
 
-api.interceptors.response.use(
-  (response) => response,
-  async (error: AxiosError) => {
-    const original = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+// authClient: login / refresh / logout / me. No 401 auto-refresh (that would loop).
+export const authClient = withCsrf(
+  axios.create({ baseURL: API_BASE, withCredentials: true, headers: { 'Content-Type': 'application/json' } }),
+);
 
-    if (error.response?.status === 401 && !original._retry) {
-      if (isRefreshing) {
-        // Queue the request until refresh completes
-        return new Promise((resolve, reject) => {
-          pendingQueue.push({
-            resolve: (token: string) => {
-              if (original.headers) original.headers.Authorization = `Bearer ${token}`;
-              resolve(api(original));
-            },
-            reject,
-          });
-        });
-      }
+// api: everything else. Attaches the in-memory access token and refreshes once on 401.
+export const api = withCsrf(
+  axios.create({ baseURL: API_BASE, withCredentials: true, headers: { 'Content-Type': 'application/json' } }),
+);
 
-      original._retry = true;
-      isRefreshing = true;
+api.interceptors.request.use(async (config) => {
+  const { getAccessToken } = await import('./auth');
+  const token = getAccessToken();
+  if (token) config.headers.set('Authorization', `Bearer ${token}`);
+  return config;
+});
 
-      try {
-        const { data } = await axios.post(
-          `${API_URL}/api/v1/auth/refresh`,
-          {},
-          { withCredentials: true }
-        );
-        const newToken: string = data.data.accessToken;
-        localStorage.setItem('amx_access_token', newToken);
-        if (original.headers) original.headers.Authorization = `Bearer ${newToken}`;
-        processQueue(null, newToken);
-        return api(original);
-      } catch (refreshError) {
-        processQueue(refreshError, null);
-        // Clear session and redirect to login
-        localStorage.removeItem('amx_access_token');
-        localStorage.removeItem('amx_user');
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
-        }
-        return Promise.reject(refreshError);
-      } finally {
-        isRefreshing = false;
-      }
-    }
-
+api.interceptors.response.use(undefined, async (error: AxiosError) => {
+  const original = error.config as (InternalAxiosRequestConfig & { _authRetry?: boolean }) | undefined;
+  if (error.response?.status !== 401 || !original || original._authRetry) {
     return Promise.reject(error);
   }
-);
+  original._authRetry = true;
+  const { refreshAccessToken, clearSession } = await import('./auth');
+  try {
+    const token = await refreshAccessToken();
+    original.headers.set('Authorization', `Bearer ${token}`);
+    return api(original);
+  } catch (refreshError) {
+    clearSession();
+    if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+      window.location.assign('/login');
+    }
+    return Promise.reject(refreshError);
+  }
+});
+
+/** Pulls a readable message out of an API error. */
+export function apiErrorMessage(err: unknown, fallback = 'Something went wrong'): string {
+  const e = err as AxiosError<{ message?: string }>;
+  if (e?.response?.data?.message) return e.response.data.message;
+  if (e?.request && !e.response) return 'Cannot reach the API server.';
+  return fallback;
+}
 
 export default api;

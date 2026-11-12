@@ -111,16 +111,22 @@ model User {
 }
 
 model Session {
-  id               String   @id @default(uuid())
-  userId           String   @map("user_id")
-  refreshTokenHash String   @map("refresh_token_hash")
-  expiresAt        DateTime @map("expires_at")
-  ip               String?
-  userAgent        String?  @map("user_agent")
-  createdAt        DateTime @default(now()) @map("created_at")
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  familyId  String    @map("family_id")
+  tokenHash String    @unique @map("token_hash") // SHA-256 of the refresh token
+  expiresAt DateTime  @map("expires_at")
+  rotatedAt DateTime? @map("rotated_at") // set when exchanged for a new token
+  revokedAt DateTime? @map("revoked_at") // set on logout or reuse detection
+  ip        String?
+  userAgent String?   @map("user_agent")
+  createdAt DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
   @@map("sessions")
 }
 
