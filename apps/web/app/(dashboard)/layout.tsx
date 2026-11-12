@@ -1,59 +1,107 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Sidebar } from './components/Sidebar';
-import NotificationBell from '../../components/NotificationBell';
-import DarkModeToggle from '../../components/DarkModeToggle';
+import { RefreshCw, WifiOff } from 'lucide-react';
+import { Header } from './components/Header';
+import { MobileNav, Sidebar } from './components/Sidebar';
 import { restoreSession } from '../../lib/auth';
+import { Logo } from '../../components/Logo';
+import { Button, Skeleton } from '../../components/ui';
+
+type Status = 'checking' | 'ok' | 'unavailable';
+
+/** Shown while the session is checked: the real shell outline, not a blank page. */
+function ShellSkeleton() {
+  return (
+    <div role="status" aria-label="Loading" className="min-h-dvh">
+      <div className="fixed inset-y-0 left-0 hidden w-64 border-r border-line bg-surface lg:block" />
+      <div className="lg:pl-64">
+        <div className="h-16 border-b border-line bg-surface" />
+        <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+          <Skeleton className="h-8 w-56" />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+          </div>
+          <Skeleton className="h-72 rounded-xl" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Unavailable({ onRetry, retrying }: { onRetry: () => void; retrying: boolean }) {
+  return (
+    <main className="flex min-h-dvh items-center justify-center px-4">
+      <div className="w-full max-w-md text-center">
+        <Logo size="lg" className="justify-center" />
+        <div className="mt-8 rounded-xl border border-line bg-surface p-6 shadow-xs">
+          <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-danger-soft text-danger">
+            <WifiOff className="h-5 w-5" aria-hidden />
+          </span>
+          <h1 className="mt-4 text-lg font-semibold text-fg">Can&apos;t reach the server</h1>
+          <p className="mt-1 text-sm text-fg-muted">
+            The ERP service isn&apos;t responding. You are still signed in; your session will resume when it&apos;s back.
+          </p>
+          <Button className="mt-5 w-full" icon={RefreshCw} loading={retrying} onClick={onRetry}>Try again</Button>
+        </div>
+      </div>
+    </main>
+  );
+}
 
 export default function DashboardLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const router = useRouter();
   const pathname = usePathname();
-  const [status, setStatus] = useState<'checking' | 'ok'>('checking');
+  const [status, setStatus] = useState<Status>('checking');
+  const [retrying, setRetrying] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
 
   // Guard: the session must be confirmed by the API (/auth/me), not just by the
-  // presence of a token. restoreSession() refreshes from the httpOnly cookie
-  // after a reload, then validates with /auth/me.
+  // presence of a token. An unreachable API is reported, not treated as sign-out.
+  const check = useCallback(async () => {
+    const result = await restoreSession();
+    if (result.status === 'ok') setStatus('ok');
+    else if (result.status === 'unavailable') setStatus('unavailable');
+    else router.replace(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+  }, [router]);
+
   useEffect(() => {
-    let cancelled = false;
-    restoreSession().then((user) => {
-      if (cancelled) return;
-      if (user) setStatus('ok');
-      else router.replace(`/login?next=${encodeURIComponent(pathname || '/')}`);
-    });
-    return () => {
-      cancelled = true;
-    };
+    void check();
     // Run once per mount; route changes inside the dashboard keep the session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (status === 'checking') {
+  // Scroll to top on navigation (the page scrolls, not an inner container)
+  useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
+
+  if (status === 'checking') return <ShellSkeleton />;
+  if (status === 'unavailable') {
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-slate-50 dark:bg-slate-900" role="status" aria-label="Checking session">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#ff5a00] border-t-transparent" />
-      </div>
+      <Unavailable
+        retrying={retrying}
+        onRetry={async () => {
+          setRetrying(true);
+          await check();
+          setRetrying(false);
+        }}
+      />
     );
   }
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-slate-50 dark:bg-slate-900">
+    <div className="min-h-dvh">
+      <a href="#main" className="sr-only z-50 rounded-lg bg-surface px-4 py-2 text-sm font-medium text-fg shadow-lg focus:not-sr-only focus:fixed focus:left-4 focus:top-4">
+        Skip to content
+      </a>
       <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white dark:bg-slate-800 dark:border-slate-700 px-6 shadow-sm z-10">
-          <h1 className="text-lg font-bold tracking-wide text-slate-900 dark:text-white">
-            AMDOX <span className="text-[#ff5a00]">ERP</span>{' '}
-            <span className="text-slate-400 font-normal ml-2 dark:text-slate-500">| Dashboard</span>
-          </h1>
-          <div className="flex items-center gap-2">
-            <DarkModeToggle />
-            <NotificationBell />
-          </div>
-        </header>
-        <main className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-900 p-6 relative">
-          <div className="absolute top-0 left-1/4 w-[500px] h-[500px] rounded-full bg-[#ff5a00] opacity-5 blur-[150px] pointer-events-none" />
-          <div className="relative z-10">{children}</div>
+      <MobileNav open={navOpen} onClose={() => setNavOpen(false)} />
+      <div className="lg:pl-64">
+        <Suspense fallback={<div className="h-16 border-b border-line bg-surface" />}>
+          <Header onMenu={() => setNavOpen(true)} />
+        </Suspense>
+        <main id="main" tabIndex={-1} className="mx-auto max-w-7xl px-4 pb-16 pt-6 focus:outline-none sm:px-6 lg:px-8">
+          <Suspense fallback={<Skeleton className="h-72 rounded-xl" />}>{children}</Suspense>
         </main>
       </div>
     </div>
