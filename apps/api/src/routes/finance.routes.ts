@@ -2,7 +2,7 @@ import { Router } from 'express';
 import {
   listJournalEntries, createJournalEntry, listAccounts,
   listInvoices, createInvoice, updateInvoiceStatus,
-  listExpenses, createExpense, updateExpenseStatus,
+  listExpenses, getExpense, createExpense, updateExpenseStatus,
   getBudgetReport, upsertBudget,
 } from '../controllers/finance.controller';
 import { requireAuth, requireRole } from '../middleware/auth.middleware';
@@ -21,8 +21,10 @@ router.get('/invoices', requireRole(...READ.FINANCE), ...listInvoices);
 router.post('/invoices', requireRole(...ROLES.FINANCE), ...createInvoice);
 router.patch('/invoices/:id', requireRole(...ROLES.FINANCE), ...updateInvoiceStatus);
 
-// Expenses: any staff member submits; finance approves / rejects / reimburses
+// Expenses: every staff member (EMPLOYEE included) submits and reads their own
+// claims; only finance (and admin) approves / rejects / reimburses
 router.get('/expenses', requireRole(...READ.EXPENSES), ...listExpenses);
+router.get('/expenses/:id', requireRole(...READ.EXPENSES), ...getExpense);
 router.post('/expenses', requireRole(...ROLES.EXPENSE_SUBMIT), ...createExpense);
 router.patch('/expenses/:id/status', requireRole(...ROLES.FINANCE), ...updateExpenseStatus);
 

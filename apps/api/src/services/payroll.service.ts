@@ -4,7 +4,9 @@ import { HttpError } from '../utils/httpError';
 import { Decimal, pct, sum } from '../utils/money';
 import { notifyUsers } from './notify.service';
 
-// Flat demo rates. A real deployment would load tax tables per jurisdiction.
+// PLACEHOLDER rates: payroll is deliberately simplified (README → Limitations).
+// A flat 20% "tax" and 5% "insurance" on gross pay; not Indian payroll rules
+// (no TDS slabs, PF, ESI or professional tax). The web app shows the same notice.
 export const TAX_RATE = new Decimal('0.20');
 export const INSURANCE_RATE = new Decimal('0.05');
 

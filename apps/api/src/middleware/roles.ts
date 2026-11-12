@@ -13,21 +13,22 @@ export const ROLES = {
   SALES: ['SUPER_ADMIN', 'SALES_REP'],
   // Everyone who works here; READ_ONLY accounts can only look
   STAFF: ['SUPER_ADMIN', 'HR_MANAGER', 'FINANCE_MANAGER', 'INVENTORY_MANAGER', 'SALES_REP', 'EMPLOYEE'],
-  // May submit expense claims (EMPLOYEE has no finance access at all)
-  EXPENSE_SUBMIT: ['SUPER_ADMIN', 'HR_MANAGER', 'FINANCE_MANAGER', 'INVENTORY_MANAGER', 'SALES_REP'],
+  // May submit expense claims (own claims only; finance approves)
+  EXPENSE_SUBMIT: ['SUPER_ADMIN', 'HR_MANAGER', 'FINANCE_MANAGER', 'INVENTORY_MANAGER', 'SALES_REP', 'EMPLOYEE'],
 } as const satisfies Record<string, readonly string[]>;
 
 /**
  * Read access per module. A role reads the modules it writes to, plus what it
  * clearly needs; READ_ONLY reads everything and writes nothing. EMPLOYEE reads
- * only its own records (self-service routes scope by the caller instead).
+ * only its own records: profile, attendance, leave, payslips and expense claims
+ * (self-service routes scope by the caller).
  *
  *                     ADMIN  HR  FIN  INV  SALES  EMP  RO
  *   PEOPLE              x    x    x                    x   directory, departments (finance: payroll)
  *   PEOPLE_RECORDS      x    x                         x   everyone's leave & attendance
  *   PAYROLL             x    x    x                    x   runs, payslips, salaries
  *   FINANCE             x         x                    x   accounts, ledger, invoices, budgets, all expenses
- *   EXPENSES            x    x    x    x    x          x   own claims (finance/RO: all)
+ *   EXPENSES            x    x    x    x    x     x    x   own claims (finance/RO: all)
  *   ANALYTICS           x         x                    x   BI summary
  *   INVENTORY           x              x    x          x   products, stock (sales: availability)
  *   PURCHASING          x         x    x               x   POs, suppliers (finance: payables)
@@ -41,7 +42,7 @@ export const READ = {
   PEOPLE_RECORDS: ['SUPER_ADMIN', 'HR_MANAGER', 'READ_ONLY'],
   PAYROLL: ['SUPER_ADMIN', 'HR_MANAGER', 'FINANCE_MANAGER', 'READ_ONLY'],
   FINANCE: ['SUPER_ADMIN', 'FINANCE_MANAGER', 'READ_ONLY'],
-  EXPENSES: ['SUPER_ADMIN', 'HR_MANAGER', 'FINANCE_MANAGER', 'INVENTORY_MANAGER', 'SALES_REP', 'READ_ONLY'],
+  EXPENSES: ['SUPER_ADMIN', 'HR_MANAGER', 'FINANCE_MANAGER', 'INVENTORY_MANAGER', 'SALES_REP', 'EMPLOYEE', 'READ_ONLY'],
   ANALYTICS: ['SUPER_ADMIN', 'FINANCE_MANAGER', 'READ_ONLY'],
   INVENTORY: ['SUPER_ADMIN', 'INVENTORY_MANAGER', 'SALES_REP', 'READ_ONLY'],
   PURCHASING: ['SUPER_ADMIN', 'INVENTORY_MANAGER', 'FINANCE_MANAGER', 'READ_ONLY'],

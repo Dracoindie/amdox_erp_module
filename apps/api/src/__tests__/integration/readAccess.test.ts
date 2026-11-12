@@ -2,7 +2,7 @@ import type { Role } from '@prisma/client';
 import { loginAs } from './helpers';
 
 // Read access per role (decided 2026-11-12):
-//  - EMPLOYEE: only their own profile, attendance, leave and payslips
+//  - EMPLOYEE: only their own profile, attendance, leave, payslips and expense claims
 //  - READ_ONLY: reads every module, writes nothing
 //  - other roles: the modules they write to, plus what they clearly need
 // Expectations are written out here on purpose (not derived from roles.ts),
@@ -28,7 +28,8 @@ const MATRIX: Array<[string, Role[]]> = [
   ['/api/v1/finance/ledger', [A, FIN, RO]],
   ['/api/v1/finance/invoices', [A, FIN, RO]],
   ['/api/v1/finance/budget', [A, FIN, RO]],
-  ['/api/v1/finance/expenses', [A, HR, FIN, INV, SALES, RO]],
+  ['/api/v1/finance/expenses', ALL], // scoped to own claims below FINANCE
+  [`/api/v1/finance/expenses/${ID}`, ALL], // others' claims: 403 (rbac.test.ts)
   ['/api/v1/bi/summary', [A, FIN, RO]],
   // Supply chain
   ['/api/v1/inventory/products', [A, INV, SALES, RO]],

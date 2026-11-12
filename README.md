@@ -50,8 +50,8 @@ docker-compose.yml
 
 | Module | Implemented |
 |---|---|
-| **Finance** | Chart of accounts; journal entries (each line exactly one of debit/credit, debits = credits, posted in one transaction); invoices with gap-free numbering per year; expense claims with approve / reject / reimburse; monthly budgets vs actual; P&L report |
-| **HR & payroll** | Employee directory and org chart; leave requests with HR approval; clock-in / clock-out with hours worked; monthly payroll that creates the run and every payslip in one transaction (one run per month, enforced by the database); "my payslips" for employees |
+| **Finance** | Chart of accounts; journal entries (each line exactly one of debit/credit, debits = credits, posted in one transaction); invoices with gap-free numbering per year; expense claims (every employee submits and tracks their own; finance approves / rejects / reimburses); monthly budgets vs actual; P&L report |
+| **HR & payroll** | Employee directory and org chart; leave requests with HR approval; clock-in / clock-out with hours worked; monthly payroll that creates the run and every payslip in one transaction (one run per month, enforced by the database), using **simplified placeholder deduction rates** (see [Limitations](#limitations)); "my payslips" for employees |
 | **Supply chain** | Products and per-warehouse stock; stock movements that update stock atomically and can never go negative; purchase orders (draft → issued → received / cancelled); suppliers; 30-day demand forecast per SKU |
 | **CRM** | Customers, drag-and-drop lead pipeline, sales orders with status transitions |
 | **BI** | Monthly revenue, collected cash, expenses, payroll and net profit computed from invoices, expenses and payslips; cost breakdown; CSV export |
@@ -82,7 +82,7 @@ The API sends the ml-service each SKU's real daily OUT quantities for the last 1
 | Leave & attendance | all | all | own | own | own | own | all |
 | Payroll runs, salaries | ✓ | ✓ | ✓ | own payslips | own payslips | own payslips | ✓ |
 | Ledger, invoices, budgets, analytics | ✓ | | ✓ | | | | ✓ |
-| Expense claims | all | own | all | own | own | — | all |
+| Expense claims (with status) | all | own | all | own | own | own | all |
 | Products & stock | ✓ | | | ✓ | ✓ (availability) | | ✓ |
 | Purchase orders, suppliers | ✓ | | ✓ (payables) | ✓ | | | ✓ |
 | Customers, sales orders | ✓ | | ✓ (invoicing; no leads or call notes) | | ✓ | | ✓ |
@@ -96,16 +96,16 @@ The dashboard (`/bi/overview`) returns only the sections the caller may read, pl
 | Action | Allowed roles |
 |---|---|
 | Employees, payroll runs, leave decisions | SUPER_ADMIN, HR_MANAGER |
-| Ledger, invoices, budgets, expense decisions | SUPER_ADMIN, FINANCE_MANAGER |
+| Ledger, invoices, budgets, expense decisions (approve / reject / reimburse) | SUPER_ADMIN, FINANCE_MANAGER |
 | Products, stock movements, POs, suppliers, forecast | SUPER_ADMIN, INVENTORY_MANAGER |
 | Customers, leads, sales orders | SUPER_ADMIN, SALES_REP |
 | Clock in/out, file leave | every role except READ_ONLY, **for themselves only** (HR/admin may act for others) |
-| Submit expense claims | every role except EMPLOYEE and READ_ONLY |
+| Submit expense claims | every role except READ_ONLY, **for themselves only** (nobody can approve their own claim) |
 | Users | SUPER_ADMIN |
 
 READ_ONLY never writes.
 
-The matrix lives in `apps/api/src/middleware/roles.ts`. Integration tests check the write restrictions, a 29-endpoint × 7-role read matrix (`readAccess.test.ts`) and READ_ONLY write refusals; the Playwright smoke test checks that each role's sidebar shows exactly its modules.
+The matrix lives in `apps/api/src/middleware/roles.ts`. Integration tests check the write restrictions, a 30-endpoint × 7-role read matrix (`readAccess.test.ts`), READ_ONLY write refusals, and employee expense claims (own claims readable and creatable; 403 on anyone else's claim and on approve / reject). The Playwright smoke test checks that each role's sidebar shows exactly its modules and that an employee can submit and track a claim; `e2e/a11y.spec.ts` runs axe (WCAG 2.1 AA) on key views at three widths in light and dark.
 
 ---
 
@@ -204,7 +204,7 @@ Build the web app with `NEXT_PUBLIC_USE_MOCKS=true` and Mock Service Worker answ
   docker run -d --name amx_test_pg -e POSTGRES_USER=amdox -e POSTGRES_PASSWORD=amdox_test -e POSTGRES_DB=amdox_test -p 127.0.0.1:55432:5432 postgres:16-alpine
   pnpm test
   ```
-  Covered: the old sort/page crash, forged tokens, refresh rotation and reuse detection, logout revocation, CSRF on refresh, 403s for 36 routes, ownership rules, journal balance and one-sided lines, stock that would go negative (409) and concurrent oversell, duplicate and concurrent payroll runs (409), concurrent invoice numbering, BI totals vs data, forecast proxy timeout and shared secret.
+  Covered: the old sort/page crash, forged tokens, refresh rotation and reuse detection, logout revocation, CSRF on refresh, 403s for 37 write routes and a 30-endpoint × 7-role read matrix, ownership rules (including employees seeing and creating only their own expense claims), journal balance and one-sided lines, stock that would go negative (409) and concurrent oversell, duplicate and concurrent payroll runs (409), concurrent invoice numbering, BI totals vs data, forecast proxy timeout and shared secret.
 - **ML service** — `cd apps/ml-service && pip install -r requirements-dev.txt && python -m pytest -q tests`.
 - **Load** — `pnpm load-test` (raise `GLOBAL_RATE_LIMIT_MAX` on the API first; the default limit will throttle a load test). No throughput or latency figures are claimed until it has been run against a real environment.
 
@@ -222,7 +222,7 @@ CI (`.github/workflows/ci.yml`) runs all of the above on Node 22 with a Postgres
 - **Single organisation.** Multi-tenancy (tenant isolation in the schema and queries) is planned, not implemented.
 - **No e-mail.** Forgot-password only logs the request; reset-password returns 501. New users get a one-time temporary password shown to the admin.
 - **Purchase orders have no line items**, so receiving a PO does not change stock — record an IN movement.
-- **Flat payroll rates** (20 % tax, 5 % insurance) for demonstration; real Indian payroll would need TDS slabs, PF, ESI and professional tax.
+- **Payroll is simplified: the deduction rates are placeholders.** Every payslip deducts a flat 20 % "tax" and 5 % "insurance" from gross pay (`TAX_RATE` / `INSURANCE_RATE` in `apps/api/src/services/payroll.service.ts`). These are not Indian payroll rules: there are no TDS slabs or regime choice, PF, ESI, professional tax, allowances or arrears, so net pay is illustrative only. The payroll and payslip screens show the same warning.
 - **Currency.** Amounts are stored without a currency column and shown as Indian rupees (`en-IN`); the demo data is in INR.
 - **Rate limits and the forecast cache are per process**; with several API replicas each enforces its own limit.
 - **Kubernetes manifests are untested templates** (see [Deployment](#deployment)).

@@ -163,6 +163,16 @@ export const listExpenses = endpoint({ query: expenseQuery }, async ({ query }, 
   return ok(res, expenses, 'Expenses retrieved', buildMeta(query.page, query.limit, total));
 });
 
+// One claim: finance and auditors may open any; everyone else only their own.
+export const getExpense = endpoint({ params: idParams }, async ({ params }, req, res) => {
+  const expense = await prisma.expense.findUnique({ where: { id: params.id } });
+  if (!expense) throw new HttpError(404, 'Expense not found');
+  if (!hasRole(req, READ.FINANCE) && expense.submittedBy !== req.user!.userId) {
+    throw new HttpError(403, 'You can only view your own expense claims');
+  }
+  return ok(res, expense, 'Expense retrieved');
+});
+
 export const createExpense = endpoint({ body: expenseSchema }, async ({ body }, req, res) => {
   const expense = await prisma.expense.create({ data: { ...body, submittedBy: req.user!.userId } });
   return created(res, expense, 'Expense submitted');

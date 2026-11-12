@@ -45,7 +45,8 @@ const RESTRICTED: Array<[Method, string, Role]> = [
   ['get', '/api/v1/admin/system-health', 'HR_MANAGER'],
   ['post', '/api/v1/users', 'READ_ONLY'],
   ['patch', `/api/v1/users/${ID}`, 'READ_ONLY'],
-  ['post', '/api/v1/finance/expenses', 'EMPLOYEE'],
+  ['patch', `/api/v1/finance/expenses/${ID}/status`, 'HR_MANAGER'],
+  ['patch', `/api/v1/finance/expenses/${ID}/status`, 'SALES_REP'],
 ];
 
 describe('RBAC: restricted routes return 403 for unauthorised roles', () => {
@@ -201,5 +202,56 @@ describe('expenses', () => {
 
     await fin.agent.patch(`/api/v1/finance/expenses/${e.body.data.id}/status`).set(fin.auth).send({ status: 'REIMBURSED' }).expect(409);
     await fin.agent.patch(`/api/v1/finance/expenses/${e.body.data.id}/status`).set(fin.auth).send({ status: 'APPROVED' }).expect(200);
+  });
+});
+
+describe('employee expense claims', () => {
+  it('an employee creates and reads their own claims and sees each status', async () => {
+    const emp = await loginAs('EMPLOYEE');
+    const fin = await loginAs('FINANCE_MANAGER');
+    const a = await emp.agent.post('/api/v1/finance/expenses').set(emp.auth)
+      .send({ category: 'Travel', amount: 1250.5, description: 'Cab to client site' }).expect(201);
+    const b = await emp.agent.post('/api/v1/finance/expenses').set(emp.auth).send({ category: 'Office', amount: 400 }).expect(201);
+    expect(a.body.data).toMatchObject({ status: 'SUBMITTED', category: 'Travel' });
+
+    // Finance decides; the employee sees the new status
+    await fin.agent.patch(`/api/v1/finance/expenses/${a.body.data.id}/status`).set(fin.auth).send({ status: 'APPROVED' }).expect(200);
+    await fin.agent.patch(`/api/v1/finance/expenses/${b.body.data.id}/status`).set(fin.auth).send({ status: 'REJECTED' }).expect(200);
+
+    const one = await emp.agent.get(`/api/v1/finance/expenses/${a.body.data.id}`).set(emp.auth).expect(200);
+    expect(one.body.data).toMatchObject({ id: a.body.data.id, status: 'APPROVED', amount: '1250.5' });
+    const list = await emp.agent.get('/api/v1/finance/expenses').set(emp.auth).expect(200);
+    const byId = Object.fromEntries(list.body.data.map((x: { id: string; status: string }) => [x.id, x.status]));
+    expect(byId).toEqual({ [a.body.data.id]: 'APPROVED', [b.body.data.id]: 'REJECTED' });
+    const rejected = await emp.agent.get('/api/v1/finance/expenses?status=REJECTED').set(emp.auth).expect(200);
+    expect(rejected.body.data.map((x: { id: string }) => x.id)).toEqual([b.body.data.id]);
+  });
+
+  it("an employee cannot see or decide anyone else's claims", async () => {
+    const emp = await loginAs('EMPLOYEE');
+    const other = await loginAs('EMPLOYEE');
+    const sales = await loginAs('SALES_REP');
+    const fin = await loginAs('FINANCE_MANAGER');
+    const theirs = await other.agent.post('/api/v1/finance/expenses').set(other.auth).send({ category: 'Meals', amount: 300 }).expect(201);
+    const salesClaim = await sales.agent.post('/api/v1/finance/expenses').set(sales.auth).send({ category: 'Travel', amount: 900 }).expect(201);
+    const mine = await emp.agent.post('/api/v1/finance/expenses').set(emp.auth).send({ category: 'Software', amount: 999 }).expect(201);
+
+    for (const id of [theirs.body.data.id, salesClaim.body.data.id]) {
+      await emp.agent.get(`/api/v1/finance/expenses/${id}`).set(emp.auth).expect(403);
+      for (const status of ['APPROVED', 'REJECTED']) {
+        await emp.agent.patch(`/api/v1/finance/expenses/${id}/status`).set(emp.auth).send({ status }).expect(403);
+      }
+    }
+    // Not even their own claim
+    for (const status of ['APPROVED', 'REJECTED']) {
+      await emp.agent.patch(`/api/v1/finance/expenses/${mine.body.data.id}/status`).set(emp.auth).send({ status }).expect(403);
+    }
+    const list = await emp.agent.get('/api/v1/finance/expenses').set(emp.auth).expect(200);
+    expect(list.body.data.map((x: { id: string }) => x.id)).toEqual([mine.body.data.id]);
+
+    // Claims were left untouched; finance can still see and approve them
+    const check = await fin.agent.get(`/api/v1/finance/expenses/${theirs.body.data.id}`).set(fin.auth).expect(200);
+    expect(check.body.data.status).toBe('SUBMITTED');
+    await fin.agent.patch(`/api/v1/finance/expenses/${theirs.body.data.id}/status`).set(fin.auth).send({ status: 'REJECTED' }).expect(200);
   });
 });
