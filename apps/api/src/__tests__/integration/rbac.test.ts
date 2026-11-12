@@ -3,7 +3,7 @@ import { prisma, loginAs } from './helpers';
 
 const ID = '00000000-0000-4000-8000-000000000000';
 
-type Method = 'get' | 'post' | 'patch' | 'delete';
+type Method = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
 // [method, path, a role that must be refused]
 const RESTRICTED: Array<[Method, string, Role]> = [
@@ -28,6 +28,12 @@ const RESTRICTED: Array<[Method, string, Role]> = [
   ['post', '/api/v1/purchases/orders', 'EMPLOYEE'],
   ['patch', `/api/v1/purchases/orders/${ID}/approve`, 'SALES_REP'],
   ['patch', `/api/v1/purchases/orders/${ID}/receive`, 'READ_ONLY'],
+  ['patch', `/api/v1/purchases/orders/${ID}/cancel`, 'SALES_REP'],
+  ['post', '/api/v1/sales-orders', 'INVENTORY_MANAGER'],
+  ['patch', `/api/v1/sales-orders/${ID}/status`, 'EMPLOYEE'],
+  ['put', '/api/v1/finance/budget', 'HR_MANAGER'],
+  ['post', '/api/v1/users', 'HR_MANAGER'],
+  ['patch', `/api/v1/users/${ID}`, 'FINANCE_MANAGER'],
   ['post', '/api/v1/purchases/suppliers', 'HR_MANAGER'],
   ['post', '/api/v1/employees', 'EMPLOYEE'],
   ['patch', `/api/v1/employees/${ID}`, 'SALES_REP'],
