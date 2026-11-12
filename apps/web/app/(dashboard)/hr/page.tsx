@@ -1,25 +1,19 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Users, FileText, Clock, CreditCard, Network, Plus, LogIn, LogOut } from 'lucide-react';
+import { Clock, CreditCard, FileText, LogIn, LogOut, Network, UserPlus, Users } from 'lucide-react';
 import type { Attendance, Employee, LeaveRequest, LeaveType, Payslip, PayrollRun, PayrollRunDetail } from '@repo/types';
 import api from '../../../lib/axios';
 import { useApi, useMutation } from '../../../lib/useApi';
 import { useAuthUser } from '../../../lib/useAuth';
+import { useDebounced } from '../../../lib/useDebounced';
 import { can } from '../../../lib/permissions';
-import { date, dateTime, money, monthLabel, titleCase, toNumber } from '../../../lib/format';
+import { CURRENCY_SYMBOL, date, dec, initials, money, monthLabel, time, titleCase, todayISO, toNumber } from '../../../lib/format';
 import {
-  Badge, Button, Card, DataState, EmptyState, Field, InlineError, Input, Modal, PageHeader, Pager, Select, StatCard, Table, Tabs, Td,
+  Alert, Badge, Button, Card, DataState, DataTable, Field, Form, FormActions, Input, Modal, PageHeader,
+  Pagination, SearchInput, Select, Skeleton, TabPanel, Tabs, Textarea, cx, useConfirm, useTabParam,
+  type Column, type SortState,
 } from '../../../components/ui';
-
-type Tab = 'directory' | 'leave' | 'attendance' | 'payroll' | 'org';
-const TABS = [
-  { id: 'directory', label: 'Directory', icon: Users },
-  { id: 'leave', label: 'Leave', icon: FileText },
-  { id: 'attendance', label: 'Attendance', icon: Clock },
-  { id: 'payroll', label: 'Payroll', icon: CreditCard },
-  { id: 'org', label: 'Org Chart', icon: Network },
-] as const;
 
 // Same rules as the API (payroll.service.ts)
 const TAX_RATE = 0.2;
@@ -27,17 +21,41 @@ const INSURANCE_RATE = 0.05;
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
 export default function HRPage() {
-  const [tab, setTab] = useState<Tab>('directory');
+  const user = useAuthUser();
+  const linked = !!user?.employee;
+  const tabs = [
+    { id: 'directory', label: 'Directory', icon: Users },
+    // Leave / attendance are self-service: hidden for accounts with no employee record unless HR
+    { id: 'leave', label: 'Leave', icon: FileText, hidden: !linked && !can(user, 'HR') },
+    { id: 'attendance', label: 'Attendance', icon: Clock, hidden: !linked && !can(user, 'HR') },
+    { id: 'payroll', label: can(user, 'PAYROLL_VIEW') ? 'Payroll' : 'My payslips', icon: CreditCard, hidden: !can(user, 'PAYROLL_VIEW') && !(linked && can(user, 'STAFF')) },
+    { id: 'org', label: 'Org chart', icon: Network },
+  ] as const;
+  const [tab, setTab] = useTabParam(tabs);
   return (
     <div className="space-y-6">
-      <PageHeader title="HR & Payroll" subtitle="Employees, leave, attendance and monthly payroll" />
-      <Tabs tabs={TABS} active={tab} onChange={setTab} />
-      {tab === 'directory' && <DirectoryTab />}
-      {tab === 'leave' && <LeaveTab />}
-      {tab === 'attendance' && <AttendanceTab />}
-      {tab === 'payroll' && <PayrollTab />}
-      {tab === 'org' && <OrgTab />}
+      <PageHeader title="HR & Payroll" description="Employees, leave, attendance and monthly payroll." />
+      <Tabs tabs={tabs} active={tab} onChange={setTab} label="HR sections" />
+      <TabPanel id={tab}>
+        {tab === 'directory' && <DirectoryTab />}
+        {tab === 'leave' && <LeaveTab />}
+        {tab === 'attendance' && <AttendanceTab />}
+        {tab === 'payroll' && (can(user, 'PAYROLL_VIEW') ? <PayrollAdmin /> : <MyPayslips />)}
+        {tab === 'org' && <OrgTab />}
+      </TabPanel>
     </div>
+  );
+}
+
+function Person({ name, sub }: { name: string; sub?: string | null }) {
+  return (
+    <span className="flex min-w-0 items-center gap-3">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-2 text-xs font-semibold text-fg-muted" aria-hidden>{initials(name)}</span>
+      <span className="min-w-0">
+        <span className="block truncate font-medium text-fg">{name}</span>
+        {sub && <span className="block truncate text-xs text-fg-subtle">{sub}</span>}
+      </span>
+    </span>
   );
 }
 
@@ -47,87 +65,101 @@ function DirectoryTab() {
   const user = useAuthUser();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<SortState>({ key: 'name', order: 'asc' });
   const [open, setOpen] = useState(false);
-  const q = new URLSearchParams({ page: String(page), limit: '20', sort: 'name', order: 'asc', ...(search && { search }) });
-  const employees = useApi<Employee[]>(`/employees?${q}`);
+  const q = useDebounced(search);
+  const params = new URLSearchParams({ page: String(page), limit: '20', sort: sort.key, order: sort.order, ...(q && { search: q }) });
+  const employees = useApi<Employee[]>(`/employees?${params}`);
+  const showSalary = can(user, 'PAYROLL_VIEW');
+  const isHr = can(user, 'HR');
+
+  const columns: Column<Employee>[] = [
+    { key: 'name', header: 'Name', primary: true, sortKey: 'name', cell: (e) => <Person name={e.name} sub={e.email} /> },
+    { key: 'department', header: 'Department', cell: (e) => e.department?.name ?? <span className="text-fg-subtle">Unassigned</span> },
+    { key: 'title', header: 'Title', cell: (e) => e.designation ?? '—' },
+    { key: 'joined', header: 'Joined', sortKey: 'joinDate', cell: (e) => date(e.joinDate), className: 'whitespace-nowrap' },
+    ...(showSalary ? [{ key: 'salary', header: 'Annual salary', numeric: true, sortKey: 'grossSalary', cell: (e: Employee) => money(e.grossSalary) }] : []),
+    { key: 'status', header: 'Status', cell: (e) => <Badge>{e.status}</Badge> },
+  ];
 
   return (
     <Card
       title="Employee directory"
+      flush
       actions={
-        <div className="flex gap-2">
-          <Input placeholder="Search name, email, title" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} className="w-60" />
-          {can(user, 'HR') && <Button onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Add employee</Button>}
-        </div>
+        <>
+          <SearchInput label="Search name, email or title" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+          {isHr && <Button icon={UserPlus} onClick={() => setOpen(true)}>Add employee</Button>}
+        </>
       }
     >
-      <DataState state={employees} empty={{ title: 'No employees found' }}>
+      <DataState
+        state={employees}
+        empty={{
+          icon: Users,
+          title: q ? 'No employees match your search' : 'No employees yet',
+          action: !q && isHr ? <Button icon={UserPlus} onClick={() => setOpen(true)}>Add employee</Button> : undefined,
+        }}
+      >
         {(rows) => (
-          <>
-            <Table head={['Name', 'Department', 'Title', 'Joined', ...(can(user, 'PAYROLL_VIEW') ? ['Annual salary'] : []), 'Status']}>
-              {rows.map((e) => (
-                <tr key={e.id}>
-                  <Td><div className="font-semibold">{e.name}</div><div className="text-xs text-slate-400">{e.email}</div></Td>
-                  <Td>{e.department?.name ?? 'Unassigned'}</Td>
-                  <Td>{e.designation ?? '—'}</Td>
-                  <Td>{date(e.joinDate)}</Td>
-                  {can(user, 'PAYROLL_VIEW') && <Td>{money(e.grossSalary)}</Td>}
-                  <Td><Badge>{e.status}</Badge></Td>
-                </tr>
-              ))}
-            </Table>
-            <Pager meta={employees.meta} onPage={setPage} />
-          </>
+          <DataTable
+            caption="Employees"
+            columns={columns}
+            rows={rows}
+            rowKey={(e) => e.id}
+            sort={sort}
+            onSortChange={(s) => { setSort(s); setPage(1); }}
+            footer={<Pagination meta={employees.meta} onPage={setPage} noun="employees" />}
+          />
         )}
       </DataState>
-      <EmployeeModal open={open} onClose={() => setOpen(false)} onSaved={employees.reload} />
+      <Modal title="Add employee" open={open} onClose={() => setOpen(false)}>
+        <EmployeeForm onDone={() => { setOpen(false); employees.reload(); }} onCancel={() => setOpen(false)} />
+      </Modal>
     </Card>
   );
 }
 
-function EmployeeModal({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
-  const departments = useApi<Array<{ id: string; name: string }>>(open ? '/employees/departments' : null);
-  const blank = { name: '', email: '', designation: '', departmentId: '', grossSalary: '', joinDate: '', status: 'ONBOARDING' };
-  const [form, setForm] = useState(blank);
+function EmployeeForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
+  const departments = useApi<Array<{ id: string; name: string }>>('/employees/departments');
+  const [form, setForm] = useState({ name: '', email: '', designation: '', departmentId: '', grossSalary: '', joinDate: todayISO(), status: 'ONBOARDING' });
+  const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value });
   const save = useMutation(async () => {
     await api.post('/employees', {
       name: form.name, email: form.email, grossSalary: form.grossSalary, joinDate: form.joinDate, status: form.status,
       ...(form.designation && { designation: form.designation }),
       ...(form.departmentId && { departmentId: form.departmentId }),
     });
-    onSaved();
-    onClose();
-    setForm(blank);
-  });
+    onDone();
+  }, { success: `${form.name || 'Employee'} added` });
   return (
-    <Modal title="Add employee" open={open} onClose={onClose}>
-      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void save.run(); }}>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Full name"><Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-          <Field label="Email"><Input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
-          <Field label="Title"><Input value={form.designation} onChange={(e) => setForm({ ...form, designation: e.target.value })} /></Field>
-          <Field label="Department">
-            <Select value={form.departmentId} onChange={(e) => setForm({ ...form, departmentId: e.target.value })}>
-              <option value="">Unassigned</option>
-              {departments.data?.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </Select>
-          </Field>
-          <Field label="Annual gross salary"><Input required type="number" min="1" step="0.01" value={form.grossSalary} onChange={(e) => setForm({ ...form, grossSalary: e.target.value })} /></Field>
-          <Field label="Join date"><Input required type="date" value={form.joinDate} onChange={(e) => setForm({ ...form, joinDate: e.target.value })} /></Field>
-        </div>
-        <Field label="Status">
-          <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+    <Form onSubmit={save.run} errors={save.fieldErrors} error={save.error}>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Full name" name="name" required><Input autoComplete="off" value={form.name} onChange={set('name')} /></Field>
+        <Field label="Work email" name="email" required><Input type="email" autoComplete="off" value={form.email} onChange={set('email')} /></Field>
+        <Field label="Job title" name="designation" optional><Input value={form.designation} onChange={set('designation')} /></Field>
+        <Field label="Department" name="departmentId" optional>
+          <Select value={form.departmentId} onChange={set('departmentId')}>
+            <option value="">Unassigned</option>
+            {departments.data?.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </Select>
+        </Field>
+        <Field label="Annual gross salary" name="grossSalary" required>
+          <Input type="number" inputMode="decimal" min="1" step="0.01" prefix={CURRENCY_SYMBOL} value={form.grossSalary} onChange={set('grossSalary')} />
+        </Field>
+        <Field label="Start date" name="joinDate" required><Input type="date" value={form.joinDate} onChange={set('joinDate')} /></Field>
+        <Field label="Status" name="status">
+          <Select value={form.status} onChange={set('status')}>
             <option value="ONBOARDING">Onboarding</option>
             <option value="ACTIVE">Active</option>
           </Select>
         </Field>
-        <InlineError message={save.error} />
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="submit" disabled={save.pending}>{save.pending ? 'Saving…' : 'Add employee'}</Button>
-        </div>
-      </form>
-    </Modal>
+      </div>
+      <FormActions>
+        <Button variant="secondary" onClick={onCancel}>Cancel</Button>
+        <Button type="submit" loading={save.pending}>Add employee</Button>
+      </FormActions>
+    </Form>
   );
 }
 
@@ -135,83 +167,90 @@ function EmployeeModal({ open, onClose, onSaved }: { open: boolean; onClose: () 
 
 const LEAVE_TYPES: LeaveType[] = ['ANNUAL', 'SICK', 'UNPAID', 'MATERNITY', 'PATERNITY'];
 
+function days(from: string, to: string) {
+  return Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000) + 1;
+}
+
 function LeaveTab() {
   const user = useAuthUser();
   const [status, setStatus] = useState('');
   const leaves = useApi<LeaveRequest[]>(`/leave-requests${status ? `?status=${status}` : ''}`);
-  const [form, setForm] = useState({ type: 'ANNUAL', fromDate: '', toDate: '', reason: '' });
-  const submit = useMutation(async () => {
-    await api.post('/leave-requests', { ...form, reason: form.reason || undefined });
-    setForm({ type: 'ANNUAL', fromDate: '', toDate: '', reason: '' });
-    leaves.reload();
-  });
-  const decide = useMutation(async (id: string, action: 'approve' | 'reject') => {
-    await api.patch(`/leave-requests/${id}/${action}`, {});
-    leaves.reload();
-  });
   const isHr = can(user, 'HR');
+  const decide = useMutation(async (l: LeaveRequest, action: 'approve' | 'reject') => {
+    await api.patch(`/leave-requests/${l.id}/${action}`, {});
+    leaves.reload();
+    return `Leave for ${l.employee.name} ${action === 'approve' ? 'approved' : 'rejected'}`;
+  }, { success: (m) => m, errorToast: true });
+
+  const columns: Column<LeaveRequest>[] = [
+    { key: 'employee', header: 'Employee', primary: true, cell: (l) => <Person name={l.employee.name} sub={titleCase(l.type)} /> },
+    { key: 'dates', header: 'Dates', cell: (l) => <span className="whitespace-nowrap">{date(l.fromDate)} – {date(l.toDate)}</span> },
+    { key: 'days', header: 'Days', numeric: true, cell: (l) => days(l.fromDate, l.toDate) },
+    { key: 'reason', header: 'Reason', cell: (l) => <span className="text-fg-muted">{l.reason ?? '—'}</span> },
+    { key: 'status', header: 'Status', cell: (l) => <Badge>{l.status}</Badge> },
+    ...(isHr ? [{
+      key: 'actions', header: <span className="sr-only">Actions</span>, align: 'right' as const, mobileLabel: '',
+      cell: (l: LeaveRequest) => l.status === 'PENDING' && l.employeeId !== user?.employee?.id ? (
+        <div className="flex justify-end gap-2">
+          <Button size="sm" variant="secondary" disabled={decide.pending} onClick={() => void decide.run(l, 'reject')}>Reject</Button>
+          <Button size="sm" disabled={decide.pending} onClick={() => void decide.run(l, 'approve')}>Approve</Button>
+        </div>
+      ) : null,
+    }] : []),
+  ];
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
       <Card
         title={isHr ? 'Leave requests' : 'My leave requests'}
+        flush
+        className={user?.employee ? 'xl:col-span-2' : 'xl:col-span-3'}
         actions={
-          <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-36" aria-label="Filter by status">
-            <option value="">All</option>
+          <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full sm:w-40" aria-label="Filter by status">
+            <option value="">All statuses</option>
             <option value="PENDING">Pending</option>
             <option value="APPROVED">Approved</option>
             <option value="REJECTED">Rejected</option>
           </Select>
         }
-        className="lg:col-span-2"
       >
-        <InlineError message={decide.error} />
-        <DataState state={leaves} empty={{ title: 'No leave requests' }}>
-          {(rows) => (
-            <Table head={['Employee', 'Type', 'From', 'To', 'Reason', 'Status', '']}>
-              {rows.map((l) => (
-                <tr key={l.id}>
-                  <Td className="font-semibold">{l.employee.name}</Td>
-                  <Td>{titleCase(l.type)}</Td>
-                  <Td>{date(l.fromDate)}</Td>
-                  <Td>{date(l.toDate)}</Td>
-                  <Td className="text-slate-500">{l.reason ?? '—'}</Td>
-                  <Td><Badge>{l.status}</Badge></Td>
-                  <Td>
-                    {isHr && l.status === 'PENDING' && l.employeeId !== user?.employee?.id && (
-                      <div className="flex gap-1">
-                        <Button size="sm" disabled={decide.pending} onClick={() => void decide.run(l.id, 'approve')}>Approve</Button>
-                        <Button size="sm" variant="secondary" disabled={decide.pending} onClick={() => void decide.run(l.id, 'reject')}>Reject</Button>
-                      </div>
-                    )}
-                  </Td>
-                </tr>
-              ))}
-            </Table>
-          )}
+        <DataState state={leaves} empty={{ icon: FileText, title: status ? `No ${status.toLowerCase()} requests` : 'No leave requests yet' }}>
+          {(rows) => <DataTable caption="Leave requests" columns={columns} rows={rows} rowKey={(l) => l.id} />}
         </DataState>
       </Card>
-      <Card title="Request leave">
-        {!user?.employee ? (
-          <EmptyState title="Your account is not linked to an employee record" />
-        ) : (
-          <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void submit.run(); }}>
-            <Field label="Type">
-              <Select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
-                {LEAVE_TYPES.map((t) => <option key={t} value={t}>{titleCase(t)}</option>)}
-              </Select>
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="From"><Input required type="date" value={form.fromDate} onChange={(e) => setForm({ ...form, fromDate: e.target.value })} /></Field>
-              <Field label="To"><Input required type="date" min={form.fromDate} value={form.toDate} onChange={(e) => setForm({ ...form, toDate: e.target.value })} /></Field>
-            </div>
-            <Field label="Reason (optional)"><Input maxLength={1000} value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} /></Field>
-            <InlineError message={submit.error} />
-            <Button type="submit" disabled={submit.pending || !can(user, 'STAFF')} className="w-full">{submit.pending ? 'Submitting…' : 'Submit request'}</Button>
-          </form>
-        )}
-      </Card>
+      {user?.employee && can(user, 'STAFF') && <LeaveForm onSaved={leaves.reload} />}
     </div>
+  );
+}
+
+function LeaveForm({ onSaved }: { onSaved: () => void }) {
+  const blank = { type: 'ANNUAL', fromDate: '', toDate: '', reason: '' };
+  const [form, setForm] = useState(blank);
+  const submit = useMutation(async () => {
+    await api.post('/leave-requests', { ...form, reason: form.reason || undefined });
+    setForm(blank);
+    onSaved();
+  }, { success: 'Leave request sent to HR' });
+  const count = form.fromDate && form.toDate && form.toDate >= form.fromDate ? days(form.fromDate, form.toDate) : null;
+  return (
+    <Card title="Request leave" className="self-start">
+      <Form onSubmit={submit.run} errors={submit.fieldErrors} error={submit.error}>
+        <Field label="Type" name="type">
+          <Select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+            {LEAVE_TYPES.map((t) => <option key={t} value={t}>{titleCase(t)}</option>)}
+          </Select>
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="From" name="fromDate" required><Input type="date" value={form.fromDate} onChange={(e) => setForm({ ...form, fromDate: e.target.value })} /></Field>
+          <Field label="To" name="toDate" required><Input type="date" min={form.fromDate || undefined} value={form.toDate} onChange={(e) => setForm({ ...form, toDate: e.target.value })} /></Field>
+        </div>
+        {count !== null && <p className="text-sm text-fg-muted">{count} calendar day{count === 1 ? '' : 's'}</p>}
+        <Field label="Reason" name="reason" optional>
+          <Textarea maxLength={1000} value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} />
+        </Field>
+        <Button type="submit" loading={submit.pending} className="w-full">Submit request</Button>
+      </Form>
+    </Card>
   );
 }
 
@@ -219,50 +258,49 @@ function LeaveTab() {
 
 function AttendanceTab() {
   const user = useAuthUser();
-  const history = useApi<Attendance[]>(user?.employee || can(user, 'HR') ? '/attendance/history?limit=50' : null);
+  const isHr = can(user, 'HR');
+  const history = useApi<Attendance[]>(user?.employee || isHr ? '/attendance/history?limit=50' : null);
   const clock = useMutation(async (action: 'clock-in' | 'clock-out') => {
     await api.post(`/attendance/${action}`, {});
     history.reload();
-  });
+    return action === 'clock-in' ? 'Clocked in' : 'Clocked out';
+  }, { success: (m) => m, errorToast: true });
   const open = history.data?.find((a) => a.employeeId === user?.employee?.id && !a.clockOut);
+
+  const columns: Column<Attendance>[] = [
+    { key: 'employee', header: 'Employee', primary: true, cell: (a) => <Person name={a.employee.name} /> },
+    { key: 'date', header: 'Date', cell: (a) => date(a.date), className: 'whitespace-nowrap' },
+    { key: 'in', header: 'Clock in', cell: (a) => time(a.clockIn) },
+    { key: 'out', header: 'Clock out', cell: (a) => (a.clockOut ? time(a.clockOut) : <Badge tone="info">Working</Badge>) },
+    { key: 'hours', header: 'Hours', numeric: true, cell: (a) => dec(a.hoursWorked) },
+  ];
 
   return (
     <div className="space-y-6">
       {user?.employee && can(user, 'STAFF') && (
-        <Card title="Time clock">
-          <div className="flex flex-wrap items-center gap-4">
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              {open ? <>Clocked in since <strong>{dateTime(open.clockIn)}</strong></> : 'You are not clocked in.'}
-            </p>
-            {open ? (
-              <Button variant="secondary" disabled={clock.pending} onClick={() => void clock.run('clock-out')}><LogOut className="h-4 w-4" /> Clock out</Button>
+        <Card>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <span className={cx('flex h-10 w-10 items-center justify-center rounded-full', open ? 'bg-success-soft text-success' : 'bg-surface-2 text-fg-subtle')}>
+                <Clock className="h-5 w-5" aria-hidden />
+              </span>
+              <div>
+                <p className="text-sm font-medium text-fg">{open ? 'You are clocked in' : 'You are not clocked in'}</p>
+                <p className="text-sm text-fg-muted">{open ? `Since ${time(open.clockIn)} · ${date(open.clockIn)}` : 'Clock in when you start work.'}</p>
+              </div>
+            </div>
+            {history.loading && !history.data ? <Skeleton className="h-9 w-28" /> : open ? (
+              <Button variant="secondary" icon={LogOut} loading={clock.pending} onClick={() => void clock.run('clock-out')}>Clock out</Button>
             ) : (
-              <Button disabled={clock.pending} onClick={() => void clock.run('clock-in')}><LogIn className="h-4 w-4" /> Clock in</Button>
+              <Button icon={LogIn} loading={clock.pending} onClick={() => void clock.run('clock-in')}>Clock in</Button>
             )}
           </div>
-          <div className="mt-2"><InlineError message={clock.error} /></div>
         </Card>
       )}
-      <Card title={can(user, 'HR') ? 'Recent attendance (all employees)' : 'My attendance'}>
-        {history.data === undefined && !history.loading && !history.error ? (
-          <EmptyState title="Your account is not linked to an employee record" />
-        ) : (
-          <DataState state={history} empty={{ title: 'No attendance records yet' }}>
-            {(rows) => (
-              <Table head={['Employee', 'Date', 'Clock in', 'Clock out', 'Hours']}>
-                {rows.map((a) => (
-                  <tr key={a.id}>
-                    <Td className="font-semibold">{a.employee.name}</Td>
-                    <Td>{date(a.date)}</Td>
-                    <Td>{dateTime(a.clockIn)}</Td>
-                    <Td>{a.clockOut ? dateTime(a.clockOut) : <Badge tone="info">Working</Badge>}</Td>
-                    <Td>{a.hoursWorked != null ? a.hoursWorked.toFixed(2) : '—'}</Td>
-                  </tr>
-                ))}
-              </Table>
-            )}
-          </DataState>
-        )}
+      <Card title={isHr ? 'Recent attendance · all employees' : 'My attendance'} flush>
+        <DataState state={history} empty={{ icon: Clock, title: 'No attendance records yet' }}>
+          {(rows) => <DataTable caption="Attendance" columns={columns} rows={rows} rowKey={(a) => a.id} />}
+        </DataState>
       </Card>
     </div>
   );
@@ -270,24 +308,19 @@ function AttendanceTab() {
 
 // ── Payroll ───────────────────────────────────────────────────────────────────
 
-function PayrollTab() {
-  const user = useAuthUser();
-  return can(user, 'PAYROLL_VIEW') ? <PayrollAdmin /> : <MyPayslips />;
-}
-
 function PayrollAdmin() {
   const user = useAuthUser();
+  const confirm = useConfirm();
   const now = new Date();
   const periodKey = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
   const runs = useApi<PayrollRun[]>('/payroll');
   const employees = useApi<Employee[]>('/employees?limit=100&sort=name&order=asc');
-  const [selected, setSelected] = useState<string | null>(null);
-  const detail = useApi<PayrollRunDetail>(selected ? `/payroll/${selected}/payslips` : null);
+  const [selected, setSelected] = useState<PayrollRun | null>(null);
   const current = runs.data?.find((r) => r.periodStart.startsWith(periodKey));
   const run = useMutation(async () => {
     await api.post('/payroll/run', { year: now.getUTCFullYear(), month: now.getUTCMonth() + 1 });
     runs.reload();
-  });
+  }, { success: `Payroll for ${monthLabel(periodKey)} confirmed`, errorToast: true });
 
   const preview = useMemo(() => (employees.data ?? [])
     .filter((e) => e.status !== 'TERMINATED')
@@ -299,84 +332,110 @@ function PayrollAdmin() {
     }), [employees.data]);
   const previewTotal = preview.reduce((s, p) => s + p.net, 0);
 
+  const startRun = async () => {
+    const ok = await confirm({
+      title: `Run payroll for ${monthLabel(periodKey)}?`,
+      message: (
+        <>
+          This creates payslips for <strong className="text-fg">{preview.length} employees</strong> with a total net pay of{' '}
+          <strong className="text-fg">{money(previewTotal)}</strong> and notifies each employee. A period can only be run once.
+        </>
+      ),
+      confirmLabel: 'Run payroll',
+    });
+    if (ok) await run.run();
+  };
+
+  type Row = (typeof preview)[number];
+  const previewColumns: Column<Row>[] = [
+    { key: 'name', header: 'Employee', primary: true, cell: (p) => <Person name={p.name} sub={p.title} /> },
+    { key: 'gross', header: 'Gross', numeric: true, cell: (p) => money(p.gross) },
+    { key: 'tax', header: 'Tax (20%)', numeric: true, cell: (p) => <span className="text-fg-muted">−{money(p.taxes)}</span> },
+    { key: 'ins', header: 'Insurance (5%)', numeric: true, cell: (p) => <span className="text-fg-muted">−{money(p.insurance)}</span> },
+    { key: 'net', header: 'Net', numeric: true, cell: (p) => <span className="font-semibold">{money(p.net)}</span> },
+  ];
+  const runColumns: Column<PayrollRun>[] = [
+    { key: 'period', header: 'Period', primary: true, cell: (r) => <span className="font-medium">{monthLabel(r.periodStart.slice(0, 7))}</span> },
+    { key: 'slips', header: 'Payslips', numeric: true, cell: (r) => r._count?.payslips ?? '—' },
+    { key: 'gross', header: 'Gross', numeric: true, cell: (r) => money(r.totalGross) },
+    { key: 'taxes', header: 'Taxes', numeric: true, cell: (r) => money(r.totalTaxes) },
+    { key: 'net', header: 'Net', numeric: true, cell: (r) => <span className="font-medium">{money(r.totalNet)}</span> },
+    { key: 'status', header: 'Status', cell: (r) => <Badge>{r.status}</Badge> },
+    { key: 'view', header: <span className="sr-only">Payslips</span>, align: 'right', mobileLabel: '', cell: (r) => <Button size="sm" variant="secondary" onClick={() => setSelected(r)}>View payslips</Button> },
+  ];
+
   return (
     <div className="space-y-6">
       <Card>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="text-xl font-bold text-slate-900 dark:text-white">Payroll cycle · {monthLabel(periodKey)}</h3>
-            <p className="mt-1 text-sm text-slate-500">
-              {current
-                ? <>Confirmed · {current._count?.payslips ?? 0} payslips · net {money(current.totalNet)}</>
-                : <>Not run yet · estimated net {money(previewTotal)} for {preview.length} employees</>}
+            <p className="text-sm text-fg-muted">Payroll cycle</p>
+            <h2 className="text-lg font-semibold text-fg">{monthLabel(periodKey)}</h2>
+            <p className="mt-1 text-sm text-fg-muted">
+              {runs.loading && !runs.data ? 'Checking…' : current
+                ? <>Confirmed · {current._count?.payslips ?? 0} payslips · net <span className="font-medium text-fg tabular-nums">{money(current.totalNet)}</span></>
+                : <>Not run yet · estimated net <span className="font-medium text-fg tabular-nums">{money(previewTotal)}</span> for {preview.length} employees</>}
             </p>
-            <div className="mt-2"><InlineError message={run.error} /></div>
           </div>
           {can(user, 'HR') && (
-            <Button onClick={() => void run.run()} disabled={!!current || run.pending || runs.loading}>
-              {run.pending ? 'Processing…' : current ? 'Payroll confirmed' : 'Confirm payroll'}
-            </Button>
+            current ? <Badge tone="good">Payroll confirmed</Badge> : (
+              <Button onClick={() => void startRun()} loading={run.pending} disabled={runs.loading || employees.loading || preview.length === 0}>
+                Run payroll…
+              </Button>
+            )
           )}
         </div>
+        {!can(user, 'HR') && !current && <Alert tone="info" className="mt-4">Only HR can run payroll. Finance can review the preview and history.</Alert>}
       </Card>
 
       {!current && (
-        <Card title="Preview (monthly)">
-          <DataState state={employees} empty={{ title: 'No employees' }}>
+        <Card title="Preview" description="Monthly amounts from annual salaries, before the run is confirmed." flush>
+          <DataState state={employees} empty={{ title: 'No employees to pay' }}>
             {() => (
-              <Table head={['Employee', 'Title', 'Gross', 'Tax (20%)', 'Insurance (5%)', 'Net']}>
-                {preview.map((p) => (
-                  <tr key={p.id}>
-                    <Td className="font-semibold">{p.name}</Td>
-                    <Td>{p.title ?? '—'}</Td>
-                    <Td>{money(p.gross)}</Td>
-                    <Td className="text-rose-500">−{money(p.taxes)}</Td>
-                    <Td className="text-amber-500">−{money(p.insurance)}</Td>
-                    <Td className="font-bold text-emerald-600">{money(p.net)}</Td>
-                  </tr>
-                ))}
-              </Table>
+              <DataTable
+                caption="Payroll preview"
+                columns={previewColumns}
+                rows={preview}
+                rowKey={(p) => p.id}
+                footer={
+                  <div className="flex justify-between border-t border-line px-4 py-3 text-sm sm:px-5">
+                    <span className="font-medium text-fg">Total net pay</span>
+                    <span className="font-semibold tabular-nums text-fg">{money(previewTotal)}</span>
+                  </div>
+                }
+              />
             )}
           </DataState>
         </Card>
       )}
 
-      <Card title="Payroll history">
-        <DataState state={runs} empty={{ title: 'No payroll runs yet' }}>
-          {(rows) => (
-            <Table head={['Period', 'Payslips', 'Gross', 'Taxes', 'Net', 'Status', '']}>
-              {rows.map((r) => (
-                <tr key={r.id}>
-                  <Td className="font-semibold">{monthLabel(r.periodStart.slice(0, 7))}</Td>
-                  <Td>{r._count?.payslips ?? '—'}</Td>
-                  <Td>{money(r.totalGross)}</Td>
-                  <Td>{money(r.totalTaxes)}</Td>
-                  <Td className="font-semibold">{money(r.totalNet)}</Td>
-                  <Td><Badge>{r.status}</Badge></Td>
-                  <Td><Button size="sm" variant="secondary" onClick={() => setSelected(r.id)}>Payslips</Button></Td>
-                </tr>
-              ))}
-            </Table>
-          )}
+      <Card title="Payroll history" flush>
+        <DataState state={runs} empty={{ icon: CreditCard, title: 'No payroll runs yet' }}>
+          {(rows) => <DataTable caption="Payroll runs" columns={runColumns} rows={rows} rowKey={(r) => r.id} />}
         </DataState>
       </Card>
 
-      <Modal title={detail.data ? `Payslips · ${monthLabel(detail.data.periodStart.slice(0, 7))}` : 'Payslips'} open={!!selected} onClose={() => setSelected(null)}>
-        <DataState state={detail} isEmpty={(d) => d.payslips.length === 0} empty={{ title: 'No payslips in this run' }}>
-          {(d) => <PayslipTable slips={d.payslips} />}
-        </DataState>
+      <Modal title={selected ? `Payslips · ${monthLabel(selected.periodStart.slice(0, 7))}` : 'Payslips'} open={!!selected} onClose={() => setSelected(null)} size="lg">
+        {selected && <RunPayslips id={selected.id} />}
       </Modal>
     </div>
   );
 }
 
-function MyPayslips() {
-  const user = useAuthUser();
-  const slips = useApi<Payslip[]>(user?.employee && can(user, 'STAFF') ? '/payroll/my-payslips' : null);
-  if (!user?.employee) return <Card><EmptyState title="Your account is not linked to an employee record" /></Card>;
+function RunPayslips({ id }: { id: string }) {
+  const detail = useApi<PayrollRunDetail>(`/payroll/${id}/payslips`);
   return (
-    <Card title="My payslips">
-      <DataState state={slips} empty={{ title: 'No payslips yet' }}>
+    <DataState state={detail} isEmpty={(d) => d.payslips.length === 0} empty={{ title: 'No payslips in this run' }}>
+      {(d) => <div className="-mx-5"><PayslipTable slips={d.payslips} /></div>}
+    </DataState>
+  );
+}
+
+function MyPayslips() {
+  const slips = useApi<Payslip[]>('/payroll/my-payslips');
+  return (
+    <Card title="My payslips" flush>
+      <DataState state={slips} empty={{ icon: CreditCard, title: 'No payslips yet', description: 'Payslips appear here after each monthly payroll run.' }}>
         {(rows) => <PayslipTable slips={rows} showPeriod />}
       </DataState>
     </Card>
@@ -384,19 +443,17 @@ function MyPayslips() {
 }
 
 function PayslipTable({ slips, showPeriod }: { slips: Payslip[]; showPeriod?: boolean }) {
-  return (
-    <Table head={[showPeriod ? 'Period' : 'Employee', 'Gross', 'Taxes', 'Insurance', 'Net']}>
-      {slips.map((s) => (
-        <tr key={s.id}>
-          <Td className="font-semibold">{showPeriod ? monthLabel(s.payrollRun!.periodStart.slice(0, 7)) : s.employee?.name}</Td>
-          <Td>{money(s.gross)}</Td>
-          <Td>{money(s.taxes)}</Td>
-          <Td>{money(s.insurance)}</Td>
-          <Td className="font-bold text-emerald-600">{money(s.net)}</Td>
-        </tr>
-      ))}
-    </Table>
-  );
+  const columns: Column<Payslip>[] = [
+    {
+      key: 'who', header: showPeriod ? 'Period' : 'Employee', primary: true,
+      cell: (s) => <span className="font-medium">{showPeriod ? monthLabel(s.payrollRun!.periodStart.slice(0, 7)) : s.employee?.name}</span>,
+    },
+    { key: 'gross', header: 'Gross', numeric: true, cell: (s) => money(s.gross) },
+    { key: 'taxes', header: 'Taxes', numeric: true, cell: (s) => money(s.taxes) },
+    { key: 'insurance', header: 'Insurance', numeric: true, cell: (s) => money(s.insurance) },
+    { key: 'net', header: 'Net pay', numeric: true, cell: (s) => <span className="font-semibold">{money(s.net)}</span> },
+  ];
+  return <DataTable caption="Payslips" columns={columns} rows={slips} rowKey={(s) => s.id} />;
 }
 
 // ── Org chart ─────────────────────────────────────────────────────────────────
@@ -404,7 +461,11 @@ function PayslipTable({ slips, showPeriod }: { slips: Payslip[]; showPeriod?: bo
 function OrgTab() {
   const employees = useApi<Employee[]>('/employees?limit=100&sort=name&order=asc');
   return (
-    <DataState state={employees} empty={{ title: 'No employees' }}>
+    <DataState
+      state={employees}
+      empty={{ icon: Network, title: 'No employees yet' }}
+      skeleton={<div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-48 rounded-xl" />)}</div>}
+    >
       {(rows) => {
         const groups = new Map<string, Employee[]>();
         for (const e of rows) {
@@ -414,11 +475,11 @@ function OrgTab() {
         return (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {[...groups].sort(([a], [b]) => a.localeCompare(b)).map(([dept, members]) => (
-              <Card key={dept} title={`${dept} · ${members.length}`}>
-                <ul className="space-y-2">
+              <Card key={dept} title={dept} description={`${members.length} ${members.length === 1 ? 'person' : 'people'}`} flush>
+                <ul className="divide-y divide-line">
                   {members.map((m) => (
-                    <li key={m.id} className="flex items-center justify-between text-sm">
-                      <span><span className="font-semibold text-slate-800 dark:text-slate-100">{m.name}</span> <span className="text-slate-400">· {m.designation ?? 'Employee'}</span></span>
+                    <li key={m.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm sm:px-5">
+                      <Person name={m.name} sub={m.designation ?? 'Employee'} />
                       {m.status !== 'ACTIVE' && <Badge>{m.status}</Badge>}
                     </li>
                   ))}
@@ -431,3 +492,4 @@ function OrgTab() {
     </DataState>
   );
 }
+
