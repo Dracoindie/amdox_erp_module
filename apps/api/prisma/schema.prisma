@@ -92,6 +92,13 @@ enum JournalEntryStatus {
   VOID
 }
 
+enum SalesOrderStatus {
+  DRAFT
+  CONFIRMED
+  FULFILLED
+  CANCELLED
+}
+
 // ─── Identity & Auth ─────────────────────────────────────────────────────────
 
 model User {
@@ -421,6 +428,21 @@ model Expense {
   @@map("expenses")
 }
 
+// Monthly spending budget per expense category
+model Budget {
+  id        String   @id @default(uuid())
+  category  String
+  year      Int
+  month     Int // 1-12
+  amount    Decimal  @db.Decimal(14, 2)
+  updatedBy String?  @map("updated_by")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([category, year, month])
+  @@index([year, month])
+  @@map("budgets")
+}
+
 // ─── CRM ─────────────────────────────────────────────────────────────────────
 
 model Customer {
@@ -436,6 +458,7 @@ model Customer {
   leads        Lead[]
   interactions Interaction[]
   invoices     Invoice[]
+  salesOrders  SalesOrder[]
 
   @@map("customers")
 }
@@ -455,6 +478,24 @@ model Lead {
 
   @@index([customerId, stage])
   @@map("leads")
+}
+
+model SalesOrder {
+  id          String           @id @default(uuid())
+  number      String           @unique
+  customerId  String           @map("customer_id")
+  description String?
+  total       Decimal          @db.Decimal(14, 2)
+  status      SalesOrderStatus @default(DRAFT)
+  createdBy   String           @map("created_by")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([customerId, status])
+  @@index([createdAt])
+  @@map("sales_orders")
 }
 
 model Interaction {

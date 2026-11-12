@@ -1,221 +1,294 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional
-import uuid
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
+"""AMX-ERP-2026 demand-forecasting service.
 
-# Try to import Prophet; if it fails (e.g. during build environment check or binary issues), we use a fallback
-try:
+Called only by the API (never by browsers). The API sends, per SKU, the real
+daily OUT quantities from stock_movements plus current stock; this service
+fits a model per SKU and returns a demand forecast.
+
+Security: every forecast request must carry the shared secret in the
+X-Internal-Token header (ML_INTERNAL_TOKEN). Without a configured token the
+service refuses forecast requests.
+
+Models, chosen per SKU by how much history exists:
+  - prophet         >= MIN_POINTS_PROPHET non-zero days and Prophet installed
+  - holt            >= 2 days of history (double exponential smoothing)
+  - moving_average  otherwise (all-zero / no history)
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import logging
+import os
+import threading
+import time
+import uuid
+from collections import OrderedDict
+from datetime import date, datetime, timedelta, timezone
+from typing import List, Literal, Optional
+
+import numpy as np
+import pandas as pd
+from fastapi import Depends, FastAPI, Header, HTTPException
+from pydantic import BaseModel, Field, field_validator
+
+try:  # Prophet is heavy; the service still works (with simpler models) without it.
     from prophet import Prophet
+
     PROPHET_AVAILABLE = True
-except ImportError:
+    logging.getLogger("cmdstanpy").setLevel(logging.WARNING)
+    logging.getLogger("prophet").setLevel(logging.WARNING)
+except ImportError:  # pragma: no cover - depends on the environment
     PROPHET_AVAILABLE = False
 
-app = FastAPI(title="AMX-ERP-2026 AI Service")
+log = logging.getLogger("ml-service")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+HISTORY_DAYS = 180
+MIN_POINTS_PROPHET = 14
+# Below this share of non-zero days a series counts as intermittent demand
+INTERMITTENT_THRESHOLD = 0.6
+CACHE_TTL_SECONDS = int(os.getenv("ML_CACHE_TTL_SECONDS", "3600"))
+CACHE_MAX_ENTRIES = int(os.getenv("ML_CACHE_MAX_ENTRIES", "256"))
+
+app = FastAPI(title="AMX-ERP-2026 AI Service", version="0.2.0")
+
+
+# ── Schemas ───────────────────────────────────────────────────────────────────
+
+
+class HistoryPoint(BaseModel):
+    date: date
+    quantity: float = Field(ge=0, le=1_000_000)
+
+
+class ForecastItem(BaseModel):
+    sku: str = Field(min_length=1, max_length=64)
+    name: Optional[str] = Field(default=None, max_length=200)
+    currentStock: int = Field(ge=0, le=100_000_000)
+    safetyStock: int = Field(ge=0, le=100_000_000)
+    history: List[HistoryPoint] = Field(default_factory=list, max_length=HISTORY_DAYS + 31)
+
+    @field_validator("history")
+    @classmethod
+    def unique_dates(cls, v: List[HistoryPoint]) -> List[HistoryPoint]:
+        if len({p.date for p in v}) != len(v):
+            raise ValueError("history dates must be unique")
+        return v
+
+
+class ForecastRequest(BaseModel):
+    horizonDays: int = Field(default=30, ge=7, le=90)
+    items: List[ForecastItem] = Field(min_length=1, max_length=20)
+
 
 class TimeSeriesPoint(BaseModel):
     day: str
     actual: Optional[float] = None
     pred: Optional[float] = None
 
+
 class DemandPrediction(BaseModel):
     sku: str
+    name: Optional[str] = None
     predictedDemand: int
     confidenceScore: float
-    stockoutRisk: str
+    stockoutRisk: Literal["Low", "Medium", "High"]
     recommendedReorder: int
+    currentStock: int
+    model: Literal["prophet", "holt", "moving_average"]
     date: str
     timeSeries: List[TimeSeriesPoint]
 
+
 class AIForecastResponse(BaseModel):
     jobId: str
-    status: str
+    status: Literal["Completed"]
+    cached: bool = False
     predictions: List[DemandPrediction]
 
-# Define SKU reference properties matching seeded database levels
-SKU_METADATA = {
-    "SKU-1001": {"name": "ThinkPad T14 Gen 3", "current_stock": 45, "safety_threshold": 10, "avg_sales": 2.2, "trend": 0.005},
-    "SKU-1002": {"name": "Ergonomic Office Chair", "current_stock": 8, "safety_threshold": 15, "avg_sales": 0.8, "trend": 0.001},
-    "SKU-1003": {"name": "Wireless Mouse M720", "current_stock": 120, "safety_threshold": 30, "avg_sales": 5.4, "trend": -0.002},
-    "SKU-1004": {"name": "27-inch 4K Monitor", "current_stock": 4, "safety_threshold": 10, "avg_sales": 1.1, "trend": 0.008},
-}
 
-def generate_forecast_for_sku(sku: str) -> DemandPrediction:
-    meta = SKU_METADATA.get(sku, {"current_stock": 10, "safety_threshold": 5, "avg_sales": 1.0, "trend": 0.0})
-    current_stock = meta["current_stock"]
-    safety = meta["safety_threshold"]
-    avg_sales = meta["avg_sales"]
-    trend = meta["trend"]
+# ── Auth ──────────────────────────────────────────────────────────────────────
 
-    # 1. Simulate 180 days of historical sales data
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=180)
-    dates = pd.date_range(start=start_date, end=end_date, freq='D')
-    
-    # Create simulated sales series with seasonality (weekly cycle) and trend
-    sales = []
-    for i, date in enumerate(dates):
-        # Base daily sales + linear trend
-        base = avg_sales + (i * trend)
-        # Weekly seasonality (higher sales on Mon-Wed, lower on weekends)
-        seasonality = 1.3 if date.weekday() < 3 else (0.6 if date.weekday() >= 5 else 1.0)
-        # Random noise
-        noise = np.random.normal(0, avg_sales * 0.25)
-        qty = max(0, int(base * seasonality + noise))
-        sales.append(qty)
 
-    df = pd.DataFrame({
-        'ds': dates,
-        'y': sales
-    })
+def require_internal_token(x_internal_token: Optional[str] = Header(default=None)) -> None:
+    expected = os.getenv("ML_INTERNAL_TOKEN", "")
+    if len(expected) < 16:
+        raise HTTPException(status_code=503, detail="ML_INTERNAL_TOKEN is not configured")
+    if not x_internal_token or not hmac.compare_digest(x_internal_token.encode(), expected.encode()):
+        raise HTTPException(status_code=401, detail="Invalid internal token")
 
-    points = []
-    # 1.5 Fill the last 15 days of historical simulated sales as actual data
-    for i in range(-15, 0):
-        hist_date = df['ds'].iloc[i]
-        points.append(TimeSeriesPoint(
-            day=hist_date.strftime("%b %d"),
-            actual=float(df['y'].iloc[i]),
-            pred=None
-        ))
 
-    # 2. Run forecasting model (Prophet or moving average fallback)
-    predicted_qty = 0
-    confidence = 0.85
-    
-    if PROPHET_AVAILABLE:
+# ── Cache ─────────────────────────────────────────────────────────────────────
+
+
+class TTLCache:
+    """Small thread-safe LRU cache with per-entry expiry."""
+
+    def __init__(self, max_entries: int, ttl: int) -> None:
+        self.max_entries = max_entries
+        self.ttl = ttl
+        self._data: "OrderedDict[str, tuple[float, DemandPrediction]]" = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, key: str) -> Optional[DemandPrediction]:
+        with self._lock:
+            hit = self._data.get(key)
+            if not hit:
+                return None
+            stored_at, value = hit
+            if time.monotonic() - stored_at > self.ttl:
+                del self._data[key]
+                return None
+            self._data.move_to_end(key)
+            return value
+
+    def set(self, key: str, value: DemandPrediction) -> None:
+        with self._lock:
+            self._data[key] = (time.monotonic(), value)
+            self._data.move_to_end(key)
+            while len(self._data) > self.max_entries:
+                self._data.popitem(last=False)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._data.clear()
+
+
+cache = TTLCache(CACHE_MAX_ENTRIES, CACHE_TTL_SECONDS)
+
+
+def cache_key(item: ForecastItem, horizon: int, today: date) -> str:
+    payload = json.dumps(
+        {"item": item.model_dump(mode="json"), "h": horizon, "d": today.isoformat(), "p": PROPHET_AVAILABLE},
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+# ── Forecasting ───────────────────────────────────────────────────────────────
+
+
+def daily_series(item: ForecastItem, today: date) -> pd.Series:
+    """Daily demand for the HISTORY_DAYS complete days before today (today is still
+    in progress, so it is excluded). Days without movements count as 0."""
+    end = today - timedelta(days=1)
+    start = end - timedelta(days=HISTORY_DAYS - 1)
+    index = pd.date_range(start=start, end=end, freq="D")
+    s = pd.Series(0.0, index=index)
+    for p in item.history:
+        ts = pd.Timestamp(p.date)
+        if ts in s.index:
+            s[ts] += p.quantity
+    return s
+
+
+def fit_holt(y: np.ndarray, horizon: int, alpha: float = 0.3, beta: float = 0.1, phi: float = 0.9) -> np.ndarray:
+    """Damped-trend Holt smoothing: the trend fades out instead of extrapolating forever."""
+    level, trend = float(y[0]), 0.0
+    for v in y[1:]:
+        prev = level
+        level = alpha * v + (1 - alpha) * (level + phi * trend)
+        trend = beta * (level - prev) + (1 - beta) * phi * trend
+    damp = np.cumsum(phi ** np.arange(1, horizon + 1))
+    return np.maximum(0.0, level + trend * damp)
+
+
+def forecast_item(item: ForecastItem, horizon: int, today: date) -> DemandPrediction:
+    series = daily_series(item, today)
+    y = series.to_numpy()
+    nonzero = int((y > 0).sum())
+    # Share of selling days, measured from the first sale (new products are not "intermittent")
+    first_sale = int(np.argmax(y > 0)) if nonzero else len(y)
+    active_share = nonzero / max(1, len(y) - first_sale)
+
+    model: str
+    preds: np.ndarray
+    confidence: float
+    if PROPHET_AVAILABLE and nonzero >= MIN_POINTS_PROPHET:
         try:
-            # Instantiate and fit Prophet with minimal settings for high speed
-            m = Prophet(
-                yearly_seasonality=False,
-                weekly_seasonality=True,
-                daily_seasonality=False,
-                interval_width=0.80
-            )
-            # Suppress console printing during fit
-            m.fit(df)
-            
-            # Predict next 30 days
-            future = m.make_future_dataframe(periods=30, include_history=False)
-            forecast = m.predict(future)
-            
-            # Sum up predictions over the next 30 days
-            predicted_qty = int(max(0, forecast['yhat'].sum()))
-            
-            # Estimate confidence based on prediction uncertainty intervals
-            yhat_upper = forecast['yhat_upper'].sum()
-            yhat_lower = forecast['yhat_lower'].sum()
-            uncertainty = (yhat_upper - yhat_lower) / max(1, predicted_qty)
-            confidence = max(0.5, min(0.95, 1.0 - uncertainty))
-
-            # Populate future points from Prophet forecast
-            for idx, row in forecast.iterrows():
-                pred_date = row['ds']
-                points.append(TimeSeriesPoint(
-                    day=pred_date.strftime("%b %d"),
-                    actual=None,
-                    pred=round(max(0.0, float(row['yhat'])), 2)
-                ))
-        except Exception as e:
-            # Fallback to double exponential smoothing if Prophet fails
-            alpha = 0.3
-            beta = 0.1
-            level = df['y'].iloc[0]
-            trend_val = df['y'].iloc[1] - df['y'].iloc[0]
-            for val in df['y']:
-                last_level = level
-                level = alpha * val + (1 - alpha) * (level + trend_val)
-                trend_val = beta * (level - last_level) + (1 - beta) * trend_val
-            
-            # Forecast next 30 days
-            pred_list = []
-            for step in range(1, 31):
-                pred_val = level + step * trend_val
-                pred_list.append(pred_val)
-                pred_date = end_date + timedelta(days=step)
-                points.append(TimeSeriesPoint(
-                    day=pred_date.strftime("%b %d"),
-                    actual=None,
-                    pred=round(max(0.0, float(pred_val)), 2)
-                ))
-            predicted_qty = int(max(0, sum(pred_list)))
-            confidence = 0.72
+            m = Prophet(yearly_seasonality=False, weekly_seasonality=True, daily_seasonality=False, interval_width=0.8)
+            m.fit(pd.DataFrame({"ds": series.index, "y": y}))
+            fc = m.predict(m.make_future_dataframe(periods=horizon, include_history=False))
+            preds = np.maximum(0.0, fc["yhat"].to_numpy())
+            total = max(1.0, float(preds.sum()))
+            spread = float((fc["yhat_upper"] - fc["yhat_lower"]).sum())
+            confidence = max(0.5, min(0.95, 1.0 - spread / (4 * total)))
+            model = "prophet"
+        except Exception:  # noqa: BLE001 - fall back to a simpler model
+            log.exception("Prophet failed for %s; falling back to Holt", item.sku)
+            preds, confidence, model = fit_holt(y, horizon), 0.7, "holt"
+    elif nonzero >= 2 and active_share >= INTERMITTENT_THRESHOLD:
+        preds, confidence, model = fit_holt(y, horizon), 0.7, "holt"
+    elif nonzero >= 2:
+        # Intermittent demand (mostly zero days): exponential smoothing decays
+        # toward zero between sales, so use the recent daily mean instead.
+        avg = float(y[-60:].mean())
+        preds, confidence, model = np.full(horizon, avg), 0.6, "moving_average"
     else:
-        # Simple weighted 30-day moving average fallback if Prophet is not installed
-        weights = np.arange(1, 181)
-        weighted_avg = np.dot(df['y'], weights) / weights.sum()
-        predicted_qty = int(weighted_avg * 30)
-        confidence = 0.65
+        avg = float(y[-30:].mean()) if len(y) else 0.0
+        preds, confidence, model = np.full(horizon, avg), 0.5, "moving_average"
 
-        # Populate future points
-        for step in range(1, 31):
-            pred_date = end_date + timedelta(days=step)
-            points.append(TimeSeriesPoint(
-                day=pred_date.strftime("%b %d"),
-                actual=None,
-                pred=round(max(0.0, float(weighted_avg)), 2)
-            ))
+    predicted = int(round(float(preds.sum())))
 
-    # 3. Dynamic Stockout Risk
-    if current_stock <= safety:
-        stockout_risk = "High"
-    elif current_stock < predicted_qty:
-        stockout_risk = "Medium"
+    if item.currentStock <= item.safetyStock:
+        risk = "High"
+    elif item.currentStock < predicted:
+        risk = "Medium"
     else:
-        stockout_risk = "Low"
+        risk = "Low"
 
-    # 4. Recommended Reorder Quantity
-    if stockout_risk in ["High", "Medium"]:
-        recommended_reorder = int(np.ceil((predicted_qty + safety - current_stock) / 5.0) * 5)
-        # Ensure it is positive and logical
-        recommended_reorder = max(10, recommended_reorder)
-    else:
-        recommended_reorder = 0
+    reorder = 0
+    if risk != "Low":
+        reorder = max(0, int(np.ceil((predicted + item.safetyStock - item.currentStock) / 5.0) * 5))
+
+    points = [TimeSeriesPoint(day=ts.strftime("%b %d"), actual=float(v)) for ts, v in series.iloc[-15:].items()]
+    for i, v in enumerate(preds, start=1):
+        points.append(TimeSeriesPoint(day=(today + timedelta(days=i - 1)).strftime("%b %d"), pred=round(float(v), 2)))
 
     return DemandPrediction(
-        sku=sku,
-        predictedDemand=predicted_qty,
+        sku=item.sku,
+        name=item.name,
+        predictedDemand=predicted,
         confidenceScore=round(float(confidence), 2),
-        stockoutRisk=stockout_risk,
-        recommendedReorder=recommended_reorder,
-        date=datetime.now().strftime("%Y-%m-%d"),
-        timeSeries=points
+        stockoutRisk=risk,  # type: ignore[arg-type]
+        recommendedReorder=reorder,
+        currentStock=item.currentStock,
+        model=model,  # type: ignore[arg-type]
+        date=today.isoformat(),
+        timeSeries=points,
     )
 
+
+# ── Routes ────────────────────────────────────────────────────────────────────
+
+
 @app.get("/health")
-def health_check():
+def health_check() -> dict:
     return {"status": "ok", "service": "ml-service", "prophet_loaded": PROPHET_AVAILABLE}
 
-@app.post("/api/v1/forecast/demand", response_model=AIForecastResponse)
-def generate_demand_forecast():
-    """
-    Generate demand forecast based on historical data.
-    Simulates transaction history and fits a real Prophet model dynamically for each ERP product.
-    """
-    try:
-        predictions = []
-        for sku in SKU_METADATA.keys():
-            predictions.append(generate_forecast_for_sku(sku))
-            
-        return AIForecastResponse(
-            jobId=str(uuid.uuid4()),
-            status="Completed",
-            predictions=predictions
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Forecasting engine error: {str(e)}")
 
-if __name__ == "__main__":
+@app.post(
+    "/api/v1/forecast/demand",
+    response_model=AIForecastResponse,
+    dependencies=[Depends(require_internal_token)],
+)
+def generate_demand_forecast(req: ForecastRequest) -> AIForecastResponse:
+    today = datetime.now(timezone.utc).date()
+    predictions: List[DemandPrediction] = []
+    all_cached = True
+    for item in req.items:
+        key = cache_key(item, req.horizonDays, today)
+        hit = cache.get(key)
+        if hit is None:
+            all_cached = False
+            hit = forecast_item(item, req.horizonDays, today)
+            cache.set(key, hit)
+        predictions.append(hit)
+    return AIForecastResponse(jobId=str(uuid.uuid4()), status="Completed", cached=all_cached, predictions=predictions)
+
+
+if __name__ == "__main__":  # pragma: no cover
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
+    uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT", "8000")))

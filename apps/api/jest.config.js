@@ -12,6 +12,8 @@ const base = {
 
 // eslint-disable-next-line no-undef
 module.exports = {
+  // Integration suites share one database, so files must not run in parallel.
+  maxWorkers: 1,
   projects: [
     {
       ...base,

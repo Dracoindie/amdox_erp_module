@@ -6,6 +6,8 @@ import { HttpError } from '../utils/httpError';
 import { ROLES, hasRole } from '../middleware/roles';
 import { Decimal, nonNegativeMoney, positiveMoney, sum } from '../utils/money';
 import { nextCounterValue } from '../services/counter.service';
+import { notifyUsers } from '../services/notify.service';
+import type { BudgetLine, BudgetReport } from '@repo/types';
 
 // ── Journal Entries ───────────────────────────────────────────────────────────
 
@@ -188,6 +190,80 @@ export const updateExpenseStatus = endpoint(
       data: { status: body.status, approvedBy: req.user!.userId },
     });
     if (count === 0) throw new HttpError(409, 'Expense was changed by someone else; reload and retry');
+    await notifyUsers(
+      [expense.submittedBy],
+      body.status === 'REJECTED' ? 'alert' : 'success',
+      `Expense ${body.status.toLowerCase()}`,
+      `${expense.category}: ${expense.amount.toFixed(2)}`,
+    );
     return ok(res, await prisma.expense.findUniqueOrThrow({ where: { id: params.id } }), 'Expense updated');
+  },
+);
+
+// ── Chart of accounts ─────────────────────────────────────────────────────────
+
+export const listAccounts = endpoint({ query: z.object({}).strict() }, async (_input, _req, res) => {
+  const accounts = await prisma.account.findMany({ where: { isActive: true }, orderBy: { code: 'asc' } });
+  return ok(res, accounts, 'Accounts retrieved');
+});
+
+// ── Budgets (budget vs actual per expense category) ───────────────────────────
+
+const periodQuery = z.object({
+  year: z.coerce.number().int().min(2000).max(2100).optional(),
+  month: z.coerce.number().int().min(1).max(12).optional(),
+}).strict();
+
+export const getBudgetReport = endpoint({ query: periodQuery }, async ({ query }, _req, res) => {
+  const now = new Date();
+  const year = query.year ?? now.getUTCFullYear();
+  const month = query.month ?? now.getUTCMonth() + 1;
+  const from = new Date(Date.UTC(year, month - 1, 1));
+  const to = new Date(Date.UTC(year, month, 1));
+
+  const [budgets, actuals] = await Promise.all([
+    prisma.budget.findMany({ where: { year, month } }),
+    prisma.expense.groupBy({
+      by: ['category'],
+      where: { status: { not: 'REJECTED' }, createdAt: { gte: from, lt: to } },
+      _sum: { amount: true },
+    }),
+  ]);
+
+  const categories = new Set([...budgets.map((b) => b.category), ...actuals.map((a) => a.category)]);
+  const zero = new Decimal(0);
+  const lines: BudgetLine[] = [...categories].sort().map((category) => {
+    const budget = budgets.find((b) => b.category === category)?.amount ?? zero;
+    const actual = new Decimal(actuals.find((a) => a.category === category)?._sum.amount ?? 0);
+    return { category, budget: budget.toFixed(2), actual: actual.toFixed(2), variance: budget.minus(actual).toFixed(2) };
+  });
+  const totalBudget = sum(lines.map((l) => l.budget));
+  const totalActual = sum(lines.map((l) => l.actual));
+  const report: BudgetReport = {
+    year,
+    month,
+    lines,
+    totals: { budget: totalBudget.toFixed(2), actual: totalActual.toFixed(2), variance: totalBudget.minus(totalActual).toFixed(2) },
+  };
+  return ok(res, report, 'Budget report retrieved');
+});
+
+export const upsertBudget = endpoint(
+  {
+    body: z.object({
+      category: z.string().trim().min(1).max(100),
+      year: z.number().int().min(2000).max(2100),
+      month: z.number().int().min(1).max(12),
+      amount: nonNegativeMoney,
+    }).strict(),
+  },
+  async ({ body }, req, res) => {
+    const { category, year, month, amount } = body;
+    const budget = await prisma.budget.upsert({
+      where: { category_year_month: { category, year, month } },
+      create: { category, year, month, amount, updatedBy: req.user!.userId },
+      update: { amount, updatedBy: req.user!.userId },
+    });
+    return ok(res, budget, 'Budget saved');
   },
 );

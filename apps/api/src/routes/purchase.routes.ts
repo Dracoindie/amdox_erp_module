@@ -6,6 +6,7 @@ import { ROLES } from '../middleware/roles';
 import { ok, created } from '../utils/response';
 import { prisma } from '../utils/prisma';
 import { nonNegativeMoney } from '../utils/money';
+import { HttpError, notFound } from '../utils/httpError';
 
 const router = Router();
 router.use(requireAuth);
@@ -39,22 +40,37 @@ router.get('/orders', ...endpoint({ query: noInput }, async (_input, _req, res) 
 router.post('/orders', requireRole(...INVENTORY), ...endpoint({ body: orderSchema }, async ({ body }, req, res) => {
   const order = await prisma.purchaseOrder.create({
     data: { ...body, total: body.subtotal.plus(body.tax), createdBy: req.user!.userId },
+    include: { supplier: { select: { name: true } } },
   });
   return created(res, order, 'Purchase order created');
 }));
 
-router.patch('/orders/:id/approve', requireRole(...INVENTORY), ...endpoint({ params: idParams }, async ({ params }, req, res) => {
-  const order = await prisma.purchaseOrder.update({
-    where: { id: params.id },
-    data: { status: 'ISSUED', approvedBy: req.user!.userId },
-  });
-  return ok(res, order, 'Purchase order approved');
-}));
+// DRAFT → ISSUED (approve) → RECEIVED; any open order can be cancelled.
+const TRANSITIONS = {
+  approve: { from: ['DRAFT'], to: 'ISSUED', message: 'Purchase order approved' },
+  receive: { from: ['ISSUED'], to: 'RECEIVED', message: 'Purchase order marked as received' },
+  cancel: { from: ['DRAFT', 'ISSUED'], to: 'CANCELLED', message: 'Purchase order cancelled' },
+} as const;
 
-router.patch('/orders/:id/receive', requireRole(...INVENTORY), ...endpoint({ params: idParams }, async ({ params }, _req, res) => {
-  const order = await prisma.purchaseOrder.update({ where: { id: params.id }, data: { status: 'RECEIVED' } });
-  return ok(res, order, 'Purchase order marked as received');
-}));
+for (const [action, t] of Object.entries(TRANSITIONS)) {
+  router.patch(`/orders/:id/${action}`, requireRole(...INVENTORY), ...endpoint({ params: idParams }, async ({ params }, req, res) => {
+    const order = await prisma.purchaseOrder.findUnique({ where: { id: params.id } });
+    if (!order) throw notFound('Purchase order');
+    if (!(t.from as readonly string[]).includes(order.status)) {
+      throw new HttpError(409, `Cannot ${action} a purchase order that is ${order.status.toLowerCase()}`);
+    }
+    const { count } = await prisma.purchaseOrder.updateMany({
+      where: { id: params.id, status: order.status },
+      data: { status: t.to, ...(action === 'approve' && { approvedBy: req.user!.userId }) },
+    });
+    if (count === 0) throw new HttpError(409, 'Purchase order was changed by someone else; reload and retry');
+    const updated = await prisma.purchaseOrder.findUniqueOrThrow({
+      where: { id: params.id },
+      include: { supplier: { select: { name: true } } },
+    });
+    return ok(res, updated, t.message);
+  }));
+}
 
 router.get('/suppliers', ...endpoint({ query: noInput }, async (_input, _req, res) => {
   const suppliers = await prisma.supplier.findMany({ orderBy: { name: 'asc' }, take: 200 });

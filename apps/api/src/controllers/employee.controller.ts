@@ -88,3 +88,11 @@ export const archiveEmployee = endpoint({ params: idParams }, async ({ params },
   });
   return ok(res, updated, 'Employee archived');
 });
+
+export const listDepartments = endpoint({ query: z.object({}).strict() }, async (_input, _req, res) => {
+  const departments = await prisma.department.findMany({
+    orderBy: { name: 'asc' },
+    select: { id: true, name: true, _count: { select: { employees: { where: { isArchived: false } } } } },
+  });
+  return ok(res, departments, 'Departments retrieved');
+});

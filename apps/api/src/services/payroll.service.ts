@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 import { HttpError } from '../utils/httpError';
 import { Decimal, pct, sum } from '../utils/money';
+import { notifyUsers } from './notify.service';
 
 // Flat demo rates. A real deployment would load tax tables per jurisdiction.
 export const TAX_RATE = new Decimal('0.20');
@@ -31,8 +32,9 @@ export function computePayslip(annualGross: Prisma.Decimal) {
 export async function runPayroll(year: number, month: number, runBy: string) {
   const { periodStart, periodEnd } = periodFor(year, month);
 
+  let run;
   try {
-    return await prisma.$transaction(async (tx) => {
+    run = await prisma.$transaction(async (tx) => {
       const existing = await tx.payrollRun.findUnique({
         where: { periodStart_periodEnd: { periodStart, periodEnd } },
         select: { id: true },
@@ -69,4 +71,12 @@ export async function runPayroll(year: number, month: number, runBy: string) {
     }
     throw err;
   }
+
+  const label = `${year}-${String(month).padStart(2, '0')}`;
+  const users = await prisma.employee.findMany({
+    where: { payslips: { some: { payrollRunId: run.id } }, userId: { not: null } },
+    select: { userId: true },
+  });
+  await notifyUsers(users.map((u) => u.userId!), 'success', `Payslip ready for ${label}`);
+  return run;
 }

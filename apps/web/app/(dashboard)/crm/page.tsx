@@ -1,275 +1,319 @@
 'use client';
 
-import { useState } from "react";
-import { Users, Kanban, MessageSquare, Briefcase, Plus, Filter, Search, Phone, Mail, FileText, ChevronRight, History } from "lucide-react";
-import { DndContext, closestCorners, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
-import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { useEffect, useState } from 'react';
+import { Kanban, Users, Briefcase, Plus, Mail, Phone } from 'lucide-react';
+import {
+  DndContext, closestCorners, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent,
+} from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
+import type { Customer, Lead, LeadStage, SalesOrder, SalesOrderStatus } from '@repo/types';
+import api from '../../../lib/axios';
+import { useApi, useMutation } from '../../../lib/useApi';
+import { useAuthUser } from '../../../lib/useAuth';
+import { can } from '../../../lib/permissions';
+import { date, money, moneyCompact, titleCase, toNumber } from '../../../lib/format';
+import {
+  Badge, Button, Card, DataState, Field, InlineError, Input, Modal, PageHeader, Pager, Select, Table, Tabs, Td, cx,
+} from '../../../components/ui';
 
-// ── Mock Data ───────────────────────────────────────────────────────────────
-type Stage = 'Lead' | 'Contacted' | 'Negotiation' | 'Closed Won';
+type Tab = 'pipeline' | 'contacts' | 'orders';
+const TABS = [
+  { id: 'pipeline', label: 'Sales Pipeline', icon: Kanban },
+  { id: 'contacts', label: 'Contacts', icon: Users },
+  { id: 'orders', label: 'Sales Orders', icon: Briefcase },
+] as const;
 
-interface Lead {
-  id: string;
-  name: string;
-  company: string;
-  value: number;
-  stage: Stage;
-  email: string;
-  phone: string;
-}
-
-const INITIAL_LEADS: Lead[] = [
-  { id: 'LD-001', name: 'John Smith', company: 'TechCorp', value: 45000, stage: 'Lead', email: 'john@techcorp.com', phone: '555-0101' },
-  { id: 'LD-002', name: 'Sarah Jones', company: 'Global Solutions', value: 120000, stage: 'Contacted', email: 'sarah@global.com', phone: '555-0102' },
-  { id: 'LD-003', name: 'Mike Brown', company: 'Startup Inc', value: 25000, stage: 'Negotiation', email: 'mike@startup.com', phone: '555-0103' },
-  { id: 'LD-004', name: 'Emily Davis', company: 'Enterprise LLC', value: 250000, stage: 'Closed Won', email: 'emily@enterprise.com', phone: '555-0104' },
-];
-
-const COLUMNS: Stage[] = ['Lead', 'Contacted', 'Negotiation', 'Closed Won'];
-
-const MOCK_SALES_ORDERS = [
-  { id: "SO-2026-001", client: "Enterprise LLC", total: 250000, status: "Fulfilled", date: "2026-05-02" },
-  { id: "SO-2026-002", client: "Startup Inc", total: 25000, status: "Processing", date: "2026-05-12" },
-];
-
-// ── Sortable Item Component ──────────────────────────────────────────────────
-function SortableLeadCard({ lead, onSelect }: { lead: Lead, onSelect: (l: Lead) => void }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: lead.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    zIndex: isDragging ? 100 : 1,
-    opacity: isDragging ? 0.8 : 1,
-  };
-
-  return (
-    <div 
-      ref={setNodeRef} 
-      style={style} 
-      {...attributes} 
-      {...listeners}
-      onClick={() => onSelect(lead)}
-      className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 cursor-grab active:cursor-grabbing hover:border-[#ff5a00] transition-colors"
-    >
-      <div className="flex justify-between items-start mb-2">
-        <h4 className="font-bold text-slate-900 dark:text-white text-sm">{lead.name}</h4>
-        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded">${(lead.value / 1000).toFixed(0)}k</span>
-      </div>
-      <p className="text-xs text-slate-500 dark:text-slate-400">{lead.company}</p>
-    </div>
-  );
-}
+const STAGES: LeadStage[] = ['PROSPECT', 'QUALIFIED', 'PROPOSAL', 'NEGOTIATION', 'WON', 'LOST'];
 
 export default function CRMPage() {
-  const [activeTab, setActiveTab] = useState<"pipeline" | "contacts" | "orders">("pipeline");
-  const [leads, setLeads] = useState<Lead[]>(INITIAL_LEADS);
-  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [tab, setTab] = useState<Tab>('pipeline');
+  return (
+    <div className="space-y-6">
+      <PageHeader title="CRM & Sales" subtitle="Pipeline, customers and sales orders" />
+      <Tabs tabs={TABS} active={tab} onChange={setTab} />
+      {tab === 'pipeline' && <PipelineTab />}
+      {tab === 'contacts' && <ContactsTab />}
+      {tab === 'orders' && <OrdersTab />}
+    </div>
+  );
+}
 
-  // DnD Setup
+// ── Pipeline (drag a card to change its stage) ────────────────────────────────
+
+function PipelineTab() {
+  const user = useAuthUser();
+  const editable = can(user, 'SALES');
+  const remote = useApi<Lead[]>('/leads?limit=100');
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (remote.data) setLeads(remote.data);
+  }, [remote.data]);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    useSensor(KeyboardSensor),
   );
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over) return;
-
-    const activeId = active.id as string;
-    const overId = over.id as string;
-
-    // Check if dropping over a column or another card
-    const isColumn = COLUMNS.includes(overId as Stage);
-
-    setLeads(prev => {
-      const oldIndex = prev.findIndex(l => l.id === activeId);
-      const activeLead = prev[oldIndex];
-      if (!activeLead) return prev;
-      
-      let newStage = activeLead.stage;
-
-      if (isColumn) {
-         newStage = overId as Stage;
-      } else {
-         const overLead = prev.find(l => l.id === overId);
-         if (overLead) newStage = overLead.stage;
-      }
-
-      if (activeLead.stage !== newStage) {
-        const updated = [...prev];
-        updated[oldIndex] = { ...activeLead, stage: newStage };
-        return updated;
-      }
-      return prev;
-    });
+  const onDragEnd = async (e: DragEndEvent) => {
+    const stage = e.over?.id as LeadStage | undefined;
+    const lead = leads.find((l) => l.id === e.active.id);
+    if (!stage || !lead || lead.stage === stage) return;
+    const before = leads;
+    setLeads((ls) => ls.map((l) => (l.id === lead.id ? { ...l, stage } : l))); // optimistic
+    setError(null);
+    try {
+      await api.patch(`/leads/${lead.id}/stage`, { stage });
+    } catch (err: any) {
+      setLeads(before);
+      setError(err?.response?.data?.message ?? 'Could not move the lead');
+    }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">CRM & Sales</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Manage leads, opportunities, and sales orders</p>
-        </div>
-      </div>
-
-      <div className="border-b border-slate-200 dark:border-slate-700 overflow-x-auto">
-        <nav className="-mb-px flex space-x-6 min-w-max">
-          {(
-            [
-              { id: 'pipeline', label: 'Sales Pipeline', icon: Kanban },
-              { id: 'contacts', label: 'Contacts', icon: Users },
-              { id: 'orders', label: 'Sales Orders', icon: Briefcase },
-            ] as const
-          ).map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setActiveTab(t.id)}
-              className={`flex items-center gap-2 whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium transition-colors ${
-                activeTab === t.id
-                  ? 'border-[#ff5a00] text-[#ff5a00]'
-                  : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
-              }`}
-            >
-              <t.icon className="h-4 w-4" /> {t.label}
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      {activeTab === "pipeline" && (
-        <div className="flex gap-6 h-[calc(100vh-250px)] animate-in fade-in">
-          {/* Kanban Board */}
-          <div className="flex-1 flex gap-4 overflow-x-auto pb-4">
-            <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
-              {COLUMNS.map(column => {
-                const columnLeads = leads.filter(l => l.stage === column);
-                const colTotal = columnLeads.reduce((s, l) => s + l.value, 0);
-
+    <Card title="Pipeline" actions={editable && <Button onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> New lead</Button>}>
+      <InlineError message={error} />
+      <DataState state={remote} empty={{ title: 'No leads yet' }}>
+        {() => (
+          <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={editable ? onDragEnd : undefined}>
+            <div className="flex gap-3 overflow-x-auto pb-2">
+              {STAGES.map((stage) => {
+                const items = leads.filter((l) => l.stage === stage);
                 return (
-                  <div key={column} className="flex-1 min-w-[280px] flex flex-col bg-slate-100 dark:bg-slate-900/50 rounded-2xl p-4">
-                    <div className="flex justify-between items-center mb-4">
-                      <h3 className="font-bold text-slate-900 dark:text-white">{column}</h3>
-                      <span className="text-xs font-bold text-slate-500 bg-slate-200 dark:bg-slate-800 px-2 py-1 rounded-full">${(colTotal / 1000).toFixed(0)}k</span>
-                    </div>
-                    
-                    {/* Sortable Context for Column */}
-                    <div className="flex-1 flex flex-col gap-3 min-h-[150px]">
-                      <SortableContext id={column} items={columnLeads.map(l => l.id)} strategy={verticalListSortingStrategy}>
-                         {columnLeads.map(lead => (
-                            <SortableLeadCard key={lead.id} lead={lead} onSelect={setSelectedLead} />
-                         ))}
-                      </SortableContext>
-                    </div>
-                  </div>
+                  <StageColumn key={stage} stage={stage} total={items.reduce((s, l) => s + toNumber(l.value), 0)} count={items.length}>
+                    {items.map((l) => <LeadCard key={l.id} lead={l} draggable={editable} />)}
+                  </StageColumn>
                 );
               })}
-            </DndContext>
-          </div>
-
-          {/* Lead Details / Timeline Slide-out */}
-          {selectedLead && (
-            <div className="w-80 shrink-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 shadow-sm flex flex-col animate-in slide-in-from-right-4">
-              <div className="flex justify-between items-start mb-6">
-                <div>
-                  <h3 className="font-bold text-lg text-slate-900 dark:text-white">{selectedLead.name}</h3>
-                  <p className="text-sm text-slate-500">{selectedLead.company}</p>
-                </div>
-                <button onClick={() => setSelectedLead(null)} className="text-slate-400 hover:text-slate-600">
-                  <ChevronRight className="h-5 w-5" />
-                </button>
-              </div>
-
-              <div className="space-y-4 mb-8">
-                <div className="flex items-center gap-3 text-sm text-slate-600 dark:text-slate-300">
-                  <div className="h-8 w-8 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center"><Mail className="h-4 w-4"/></div>
-                  {selectedLead.email}
-                </div>
-                <div className="flex items-center gap-3 text-sm text-slate-600 dark:text-slate-300">
-                  <div className="h-8 w-8 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center"><Phone className="h-4 w-4"/></div>
-                  {selectedLead.phone}
-                </div>
-                <div className="flex items-center gap-3 text-sm text-slate-600 dark:text-slate-300">
-                  <div className="h-8 w-8 rounded-full bg-[#ff5a00]/10 text-[#ff5a00] flex items-center justify-center"><Briefcase className="h-4 w-4"/></div>
-                  <span className="font-bold">${selectedLead.value.toLocaleString()}</span>
-                </div>
-              </div>
-
-              <div className="flex-1 flex flex-col">
-                <h4 className="font-bold text-sm text-slate-900 dark:text-white mb-4 flex items-center gap-2"><History className="h-4 w-4"/> Timeline & Notes</h4>
-                <div className="flex-1 overflow-y-auto space-y-4 mb-4">
-                  <div className="border-l-2 border-slate-200 dark:border-slate-700 pl-4 py-1 relative">
-                    <div className="absolute -left-[5px] top-2 h-2 w-2 rounded-full bg-[#ff5a00]"></div>
-                    <p className="text-xs text-slate-500 mb-1">May 13, 10:00 AM</p>
-                    <p className="text-sm text-slate-800 dark:text-slate-200">Moved to {selectedLead.stage}</p>
-                  </div>
-                  <div className="border-l-2 border-slate-200 dark:border-slate-700 pl-4 py-1 relative">
-                    <div className="absolute -left-[5px] top-2 h-2 w-2 rounded-full bg-slate-300 dark:bg-slate-600"></div>
-                    <p className="text-xs text-slate-500 mb-1">May 10, 2:30 PM</p>
-                    <p className="text-sm text-slate-800 dark:text-slate-200">Initial call completed. Sent pricing deck.</p>
-                  </div>
-                </div>
-                
-                <div className="relative">
-                  <textarea 
-                    placeholder="Add a note..." 
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 p-3 text-sm resize-none focus:outline-none focus:border-[#ff5a00] focus:ring-1 focus:ring-[#ff5a00]"
-                    rows={3}
-                  ></textarea>
-                  <button className="absolute bottom-3 right-3 bg-[#ff5a00] text-white p-1.5 rounded-lg hover:bg-orange-600 transition-colors">
-                    <MessageSquare className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
             </div>
-          )}
-        </div>
-      )}
+          </DndContext>
+        )}
+      </DataState>
+      <LeadModal open={open} onClose={() => setOpen(false)} onSaved={remote.reload} />
+    </Card>
+  );
+}
 
-      {activeTab === "orders" && (
-        <div className="space-y-4 animate-in fade-in">
-          <div className="flex justify-between items-center bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-            <h3 className="font-medium text-slate-900 dark:text-white">Sales Orders</h3>
-            <button className="flex items-center gap-2 rounded-md bg-[#ff5a00] px-4 py-2 text-sm font-medium text-white hover:bg-orange-600 transition-colors">
-              <Plus className="h-4 w-4" /> Create Order
-            </button>
-          </div>
-          <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm overflow-hidden">
-            <table className="w-full text-left text-sm text-slate-500 dark:text-slate-400">
-              <thead className="bg-slate-50 dark:bg-slate-900/50 text-xs uppercase text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
-                <tr>
-                  <th className="px-6 py-3 font-medium">Order ID</th>
-                  <th className="px-6 py-3 font-medium">Client</th>
-                  <th className="px-6 py-3 font-medium">Date</th>
-                  <th className="px-6 py-3 font-medium">Status</th>
-                  <th className="px-6 py-3 text-right font-medium">Total</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                {MOCK_SALES_ORDERS.map(so => (
-                  <tr key={so.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                    <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">{so.id}</td>
-                    <td className="px-6 py-4">{so.client}</td>
-                    <td className="px-6 py-4">{so.date}</td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                        so.status === 'Fulfilled' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
-                      }`}>
-                        {so.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right font-bold text-slate-900 dark:text-white">${so.total.toLocaleString()}</td>
+function StageColumn({ stage, total, count, children }: { stage: LeadStage; total: number; count: number; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: stage });
+  return (
+    <div ref={setNodeRef} className={cx('flex min-h-[320px] min-w-[220px] flex-1 flex-col gap-2 rounded-2xl p-3', isOver ? 'bg-orange-50 dark:bg-slate-700' : 'bg-slate-100 dark:bg-slate-900/50')}>
+      <div className="mb-1 flex items-center justify-between">
+        <h3 className="text-sm font-bold text-slate-800 dark:text-white">{titleCase(stage)} <span className="text-slate-400">· {count}</span></h3>
+        <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">{moneyCompact(total)}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function LeadCard({ lead, draggable }: { lead: Lead; draggable: boolean }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: lead.id, disabled: !draggable });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform) }}
+      {...listeners}
+      {...attributes}
+      className={cx('rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-800', draggable && 'cursor-grab', isDragging && 'opacity-60 shadow-lg')}
+    >
+      <p className="text-sm font-semibold text-slate-900 dark:text-white">{lead.customer.name}</p>
+      <p className="text-xs text-slate-500">{lead.customer.company ?? '—'}</p>
+      <p className="mt-2 text-sm font-bold text-[#ff5a00]">{money(lead.value)}</p>
+      {lead.expectedClose && <p className="text-[11px] text-slate-400">Close by {date(lead.expectedClose)}</p>}
+    </div>
+  );
+}
+
+function LeadModal({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
+  const customers = useApi<Customer[]>(open ? '/customers?limit=100&sort=name&order=asc' : null);
+  const blank = { customerId: '', value: '', stage: 'PROSPECT', expectedClose: '', notes: '' };
+  const [form, setForm] = useState(blank);
+  const save = useMutation(async () => {
+    await api.post('/leads', {
+      customerId: form.customerId, value: form.value || '0', stage: form.stage,
+      ...(form.expectedClose && { expectedClose: form.expectedClose }),
+      ...(form.notes && { notes: form.notes }),
+    });
+    onSaved();
+    onClose();
+    setForm(blank);
+  });
+  return (
+    <Modal title="New lead" open={open} onClose={onClose}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void save.run(); }}>
+        <Field label="Customer">
+          <Select required value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}>
+            <option value="">Select…</option>
+            {customers.data?.map((c) => <option key={c.id} value={c.id}>{c.name}{c.company ? ` (${c.company})` : ''}</option>)}
+          </Select>
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Value"><Input type="number" min="0" step="0.01" value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} /></Field>
+          <Field label="Stage">
+            <Select value={form.stage} onChange={(e) => setForm({ ...form, stage: e.target.value })}>
+              {STAGES.map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
+            </Select>
+          </Field>
+        </div>
+        <Field label="Expected close"><Input type="date" value={form.expectedClose} onChange={(e) => setForm({ ...form, expectedClose: e.target.value })} /></Field>
+        <Field label="Notes"><Input maxLength={5000} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
+        <InlineError message={save.error} />
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button type="submit" disabled={save.pending}>{save.pending ? 'Saving…' : 'Create lead'}</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// ── Contacts ──────────────────────────────────────────────────────────────────
+
+function ContactsTab() {
+  const user = useAuthUser();
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const q = new URLSearchParams({ page: String(page), limit: '20', sort: 'name', order: 'asc', ...(search && { search }) });
+  const customers = useApi<Customer[]>(`/customers?${q}`);
+  const blank = { name: '', company: '', email: '', phone: '' };
+  const [form, setForm] = useState(blank);
+  const save = useMutation(async () => {
+    await api.post('/customers', {
+      name: form.name,
+      ...(form.company && { company: form.company }),
+      ...(form.email && { email: form.email }),
+      ...(form.phone && { phone: form.phone }),
+    });
+    setForm(blank);
+    customers.reload();
+  });
+  return (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <Card
+        title="Customers"
+        actions={<Input placeholder="Search name, company, email" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} className="w-60" />}
+        className="lg:col-span-2"
+      >
+        <DataState state={customers} empty={{ title: 'No customers found' }}>
+          {(rows) => (
+            <>
+              <Table head={['Name', 'Company', 'Contact', 'Since']}>
+                {rows.map((c) => (
+                  <tr key={c.id}>
+                    <Td className="font-semibold">{c.name}</Td>
+                    <Td>{c.company ?? '—'}</Td>
+                    <Td className="text-xs">
+                      {c.email && <div className="flex items-center gap-1"><Mail className="h-3 w-3" /> {c.email}</div>}
+                      {c.phone && <div className="flex items-center gap-1"><Phone className="h-3 w-3" /> {c.phone}</div>}
+                      {!c.email && !c.phone && '—'}
+                    </Td>
+                    <Td>{date(c.createdAt)}</Td>
                   </tr>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              </Table>
+              <Pager meta={customers.meta} onPage={setPage} />
+            </>
+          )}
+        </DataState>
+      </Card>
+      {can(user, 'SALES') && (
+        <Card title="Add customer">
+          <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void save.run(); }}>
+            <Field label="Name"><Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+            <Field label="Company"><Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} /></Field>
+            <Field label="Email"><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
+            <Field label="Phone"><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
+            <InlineError message={save.error} />
+            <Button type="submit" disabled={save.pending} className="w-full">{save.pending ? 'Saving…' : 'Add customer'}</Button>
+          </form>
+        </Card>
       )}
-
-      {/* Contacts tab omitted for brevity, similar list to employees */}
     </div>
+  );
+}
+
+// ── Sales orders ──────────────────────────────────────────────────────────────
+
+const NEXT_STATUS: Partial<Record<SalesOrderStatus, SalesOrderStatus[]>> = {
+  DRAFT: ['CONFIRMED', 'CANCELLED'],
+  CONFIRMED: ['FULFILLED', 'CANCELLED'],
+};
+
+function OrdersTab() {
+  const user = useAuthUser();
+  const [page, setPage] = useState(1);
+  const [open, setOpen] = useState(false);
+  const orders = useApi<SalesOrder[]>(`/sales-orders?page=${page}&limit=20`);
+  const move = useMutation(async (id: string, status: SalesOrderStatus) => {
+    await api.patch(`/sales-orders/${id}/status`, { status });
+    orders.reload();
+  });
+  return (
+    <Card title="Sales orders" actions={can(user, 'SALES') && <Button onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> New order</Button>}>
+      <InlineError message={move.error} />
+      <DataState state={orders} empty={{ title: 'No sales orders yet' }}>
+        {(rows) => (
+          <>
+            <Table head={['Number', 'Customer', 'Date', 'Total', 'Status', '']}>
+              {rows.map((o) => (
+                <tr key={o.id}>
+                  <Td className="font-mono text-xs">{o.number}</Td>
+                  <Td className="font-semibold">{o.customer.name}</Td>
+                  <Td>{date(o.createdAt)}</Td>
+                  <Td className="font-semibold">{money(o.total)}</Td>
+                  <Td><Badge>{o.status}</Badge></Td>
+                  <Td>
+                    {can(user, 'SALES') && (
+                      <div className="flex gap-1">
+                        {NEXT_STATUS[o.status]?.map((s) => (
+                          <Button key={s} size="sm" variant={s === 'CANCELLED' ? 'secondary' : 'primary'} disabled={move.pending} onClick={() => void move.run(o.id, s)}>
+                            {s === 'CONFIRMED' ? 'Confirm' : s === 'FULFILLED' ? 'Fulfil' : 'Cancel'}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
+                  </Td>
+                </tr>
+              ))}
+            </Table>
+            <Pager meta={orders.meta} onPage={setPage} />
+          </>
+        )}
+      </DataState>
+      <OrderModal open={open} onClose={() => setOpen(false)} onSaved={orders.reload} />
+    </Card>
+  );
+}
+
+function OrderModal({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
+  const customers = useApi<Customer[]>(open ? '/customers?limit=100&sort=name&order=asc' : null);
+  const blank = { customerId: '', total: '', description: '' };
+  const [form, setForm] = useState(blank);
+  const save = useMutation(async () => {
+    await api.post('/sales-orders', { customerId: form.customerId, total: form.total, ...(form.description && { description: form.description }) });
+    onSaved();
+    onClose();
+    setForm(blank);
+  });
+  return (
+    <Modal title="New sales order" open={open} onClose={onClose}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void save.run(); }}>
+        <Field label="Customer">
+          <Select required value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}>
+            <option value="">Select…</option>
+            {customers.data?.map((c) => <option key={c.id} value={c.id}>{c.name}{c.company ? ` (${c.company})` : ''}</option>)}
+          </Select>
+        </Field>
+        <Field label="Total"><Input required type="number" min="0.01" step="0.01" value={form.total} onChange={(e) => setForm({ ...form, total: e.target.value })} /></Field>
+        <Field label="Description"><Input maxLength={1000} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
+        <InlineError message={save.error} />
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button type="submit" disabled={save.pending}>{save.pending ? 'Saving…' : 'Create order'}</Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

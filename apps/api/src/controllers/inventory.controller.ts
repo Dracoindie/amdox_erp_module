@@ -6,6 +6,11 @@ import { HttpError, notFound } from '../utils/httpError';
 import { logger } from '../utils/logger';
 import { randomUUID } from 'node:crypto';
 import { positiveMoney } from '../utils/money';
+import { Prisma } from '@prisma/client';
+import type { AIForecastResponse } from '@repo/types';
+import { env } from '../config/env';
+import { ROLES } from '../middleware/roles';
+import { notifyRoles } from '../services/notify.service';
 
 // ── Products ──────────────────────────────────────────────────────────────────
 
@@ -100,7 +105,10 @@ export const recordStockMovement = endpoint({ body: movementSchema }, async ({ b
 
   const result = await prisma.$transaction(async (tx) => {
     const [product, warehouse] = await Promise.all([
-      tx.product.findFirst({ where: { id: body.productId, isActive: true }, select: { id: true } }),
+      tx.product.findFirst({
+        where: { id: body.productId, isActive: true },
+        select: { id: true, sku: true, name: true, reorderLevel: true },
+      }),
       tx.warehouse.findUnique({ where: { id: body.warehouseId }, select: { id: true } }),
     ]);
     if (!product) throw notFound('Product');
@@ -132,29 +140,100 @@ export const recordStockMovement = endpoint({ body: movementSchema }, async ({ b
     const level = await tx.stockLevel.findUniqueOrThrow({
       where: { productId_warehouseId: { productId: body.productId, warehouseId: body.warehouseId } },
     });
-    return { movement, stockLevel: level };
+    // Alert when this movement takes the level across the reorder threshold.
+    const crossed = delta < 0 && level.quantity <= product.reorderLevel && level.quantity - delta > product.reorderLevel;
+    return { movement, stockLevel: level, lowStockAlert: crossed ? product : null };
   });
 
-  return created(res, result, 'Stock movement recorded');
+  const { lowStockAlert, ...data } = result;
+  if (lowStockAlert) {
+    await notifyRoles(ROLES.INVENTORY, 'alert', `Low stock: ${lowStockAlert.sku}`,
+      `${lowStockAlert.name} is at ${data.stockLevel.quantity} (reorder level ${lowStockAlert.reorderLevel})`);
+  }
+  return created(res, data, 'Stock movement recorded');
+});
+
+// ── Warehouses ────────────────────────────────────────────────────────────────
+
+export const listWarehouses = endpoint({ query: noInput }, async (_input, _req, res) => {
+  const warehouses = await prisma.warehouse.findMany({ orderBy: { name: 'asc' } });
+  return ok(res, warehouses, 'Warehouses retrieved');
 });
 
 // ── AI demand forecast (proxy to ml-service) ──────────────────────────────────
+// The API sends the real per-SKU daily OUT history (last HISTORY_DAYS days) and
+// current stock; the ml-service fits a model and returns predictions.
 
-export const getAiForecast = endpoint({ body: noInput }, async (_input, _req, res) => {
-  const mlUrl = process.env.ML_SERVICE_URL || 'http://localhost:8000';
+const HISTORY_DAYS = 180;
+const MAX_SKUS = 20;
+
+const forecastBody = z.object({
+  skus: z.array(z.string().trim().min(1).max(64)).max(MAX_SKUS).optional(),
+  horizonDays: z.number().int().min(7).max(90).default(30),
+}).strict();
+
+const mlResponse = z.object({
+  jobId: z.string(),
+  status: z.enum(['Processing', 'Completed', 'Failed']),
+  cached: z.boolean().optional(),
+  predictions: z.array(z.object({ sku: z.string() }).passthrough()),
+}).passthrough();
+
+export const getAiForecast = endpoint({ body: forecastBody }, async ({ body }, _req, res) => {
+  if (!env.ML_INTERNAL_TOKEN) throw new HttpError(503, 'Forecasting service is not configured');
+
+  const products = await prisma.product.findMany({
+    where: { isActive: true, ...(body.skus && { sku: { in: body.skus } }) },
+    orderBy: { sku: 'asc' },
+    take: MAX_SKUS,
+    select: { id: true, sku: true, name: true, reorderLevel: true, stockLevels: { select: { quantity: true } } },
+  });
+  if (products.length === 0) {
+    const empty: AIForecastResponse = { jobId: randomUUID(), status: 'Completed', predictions: [] };
+    return ok(res, empty, 'No products to forecast');
+  }
+
+  const since = new Date(Date.now() - HISTORY_DAYS * 24 * 60 * 60 * 1000);
+  const rows = await prisma.$queryRaw<{ product_id: string; day: Date; qty: bigint }[]>`
+    SELECT "product_id", date_trunc('day', "created_at") AS day, SUM("quantity")::bigint AS qty
+    FROM "stock_movements"
+    WHERE "type" = 'OUT' AND "created_at" >= ${since}
+      AND "product_id" IN (${Prisma.join(products.map((p) => p.id))})
+    GROUP BY 1, 2
+    ORDER BY 2`;
+
+  const items = products.map((p) => ({
+    sku: p.sku,
+    name: p.name,
+    currentStock: p.stockLevels.reduce((s, l) => s + l.quantity, 0),
+    safetyStock: p.reorderLevel,
+    history: rows
+      .filter((r) => r.product_id === p.id)
+      .map((r) => ({ date: r.day.toISOString().slice(0, 10), quantity: Number(r.qty) })),
+  }));
+
   let response: Response;
   try {
-    response = await fetch(`${mlUrl}/api/v1/forecast/demand`, {
+    response = await fetch(`${env.ML_SERVICE_URL}/api/v1/forecast/demand`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Internal-Token': env.ML_INTERNAL_TOKEN },
+      body: JSON.stringify({ horizonDays: body.horizonDays, items }),
+      signal: AbortSignal.timeout(env.ML_TIMEOUT_MS),
     });
   } catch (err) {
-    logger.error('ML service unreachable', { error: (err as Error).message });
-    throw new HttpError(502, 'Forecasting service is unavailable');
+    const timedOut = (err as Error).name === 'TimeoutError';
+    logger.error('ML service request failed', { error: (err as Error).message, timedOut });
+    throw new HttpError(timedOut ? 504 : 502, timedOut ? 'Forecasting service timed out' : 'Forecasting service is unavailable');
   }
   if (!response.ok) {
     logger.error('ML service error', { status: response.status });
     throw new HttpError(502, 'Forecasting service returned an error');
   }
-  return ok(res, await response.json(), 'Forecast generated');
+
+  const parsed = mlResponse.safeParse(await response.json().catch(() => null));
+  if (!parsed.success) {
+    logger.error('ML service returned an unexpected payload');
+    throw new HttpError(502, 'Forecasting service returned an invalid response');
+  }
+  return ok(res, parsed.data as unknown as AIForecastResponse, 'Forecast generated');
 });

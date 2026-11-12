@@ -1,789 +1,428 @@
 'use client';
 
-import { useState } from "react";
-import {
-  BookOpen,
-  FileText,
-  Download,
-  Plus,
-  PieChart,
-  CreditCard,
-  CheckCircle,
-  TrendingUp,
-  TrendingDown,
-  Printer,
-  DollarSign,
-  Wallet,
-  Landmark,
-} from "lucide-react";
-
-import {
-  PieChart as RechartsPie,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-} from "recharts";
-
-import type { JournalEntry } from "@repo/types";
+import { useMemo, useState } from 'react';
+import { BookOpen, FileText, Receipt, PieChart as PieIcon, LineChart, Plus, Trash2 } from 'lucide-react';
+import type { Account, BISummary, BudgetReport, Customer, Expense, Invoice, InvoiceStatus, JournalEntry } from '@repo/types';
 import api from '../../../lib/axios';
-import { useEffect } from 'react';
+import { useApi, useMutation } from '../../../lib/useApi';
+import { useAuthUser } from '../../../lib/useAuth';
+import { can } from '../../../lib/permissions';
+import { date, money, monthLabel, todayISO, toNumber } from '../../../lib/format';
+import {
+  Badge, Button, Card, DataState, Field, InlineError, Input, Modal, PageHeader, Pager, Select, StatCard, Table, Tabs, Td,
+} from '../../../components/ui';
 
-// ─────────────────────────────────────────────────────────────
-// Mock Data
-// ─────────────────────────────────────────────────────────────
-
-const MOCK_LEDGER: JournalEntry[] = [
-  {
-    id: "TRX-001",
-    date: "2026-05-10",
-    description: "Client Payment - TechCorp",
-    account: "Accounts Receivable",
-    debit: 0,
-    credit: 15000,
-    currency: "USD",
-    status: "Posted",
-  },
-  {
-    id: "TRX-002",
-    date: "2026-05-10",
-    description: "Office Rent - May 2026",
-    account: "Operating Expenses",
-    debit: 5000,
-    credit: 0,
-    currency: "USD",
-    status: "Posted",
-  },
-  {
-    id: "TRX-003",
-    date: "2026-05-12",
-    description: "Server Infrastructure",
-    account: "IT Expenses",
-    debit: 1200,
-    credit: 0,
-    currency: "USD",
-    status: "Posted",
-  },
-];
-
-const MOCK_INVOICES = [
-  {
-    id: "INV-2026-047",
-    client: "TechCorp",
-    amount: 15000,
-    date: "2026-05-01",
-    due: "2026-05-31",
-    status: "Paid",
-  },
-  {
-    id: "INV-2026-048",
-    client: "Global Solutions",
-    amount: 8500,
-    date: "2026-05-05",
-    due: "2026-06-05",
-    status: "Pending",
-  },
-  {
-    id: "INV-2026-049",
-    client: "Startup Inc",
-    amount: 3200,
-    date: "2026-04-15",
-    due: "2026-05-15",
-    status: "Overdue",
-  },
-];
-
-const MOCK_BUDGET = [
-  {
-    dept: "Engineering",
-    allocated: 1500000,
-    spent: 1200000,
-    remaining: 300000,
-  },
-  {
-    dept: "Marketing",
-    allocated: 500000,
-    spent: 450000,
-    remaining: 50000,
-  },
-  {
-    dept: "Sales",
-    allocated: 800000,
-    spent: 600000,
-    remaining: 200000,
-  },
-];
-
-const COLORS = ["#ff5a00", "#10b981", "#3b82f6"];
-
-type Tab =
-  | "ledger"
-  | "invoices"
-  | "expenses"
-  | "budget"
-  | "reports";
+type Tab = 'ledger' | 'invoices' | 'expenses' | 'budget' | 'reports';
+const TABS = [
+  { id: 'ledger', label: 'General Ledger', icon: BookOpen },
+  { id: 'invoices', label: 'Invoices', icon: FileText },
+  { id: 'expenses', label: 'Expenses', icon: Receipt },
+  { id: 'budget', label: 'Budgets', icon: PieIcon },
+  { id: 'reports', label: 'Reports', icon: LineChart },
+] as const;
 
 export default function FinancePage() {
-  const [activeTab, setActiveTab] = useState<Tab>("ledger");
-
-  const [ledger, setLedger] = useState<JournalEntry[]>(MOCK_LEDGER);
-  const [invoices, setInvoices] = useState<any[]>(MOCK_INVOICES);
-
-  useEffect(() => {
-    // Fetch Ledger
-    api.get('/finance/ledger').then((res) => {
-      if (res.data?.success && Array.isArray(res.data.data)) {
-        const fetchedLedger: JournalEntry[] = res.data.data.map((entry: any) => {
-          // Flatten first line for simplified UI viewing
-          const firstLine = entry.lines?.[0];
-          return {
-            id: entry.id,
-            date: new Date(entry.date).toISOString().split('T')[0],
-            description: entry.description,
-            account: firstLine?.account?.name || 'Multiple Accounts',
-            debit: entry.totalDebit || 0,
-            credit: entry.totalCredit || 0,
-            currency: 'USD',
-            status: entry.status === 'POSTED' ? 'Posted' : 'Pending',
-          };
-        });
-        setLedger(fetchedLedger);
-      }
-    }).catch(err => console.error('Failed to fetch ledger', err));
-
-    // Fetch Invoices
-    api.get('/finance/invoices').then((res) => {
-      if (res.data?.success && Array.isArray(res.data.data)) {
-        const fetchedInvoices = res.data.data.map((inv: any) => ({
-          id: inv.number,
-          client: inv.customer?.name || 'Unknown Client',
-          amount: inv.total,
-          date: new Date(inv.createdAt).toISOString().split('T')[0],
-          due: inv.dueDate ? new Date(inv.dueDate).toISOString().split('T')[0] : 'N/A',
-          status: inv.status === 'PAID' ? 'Paid' : inv.status === 'OVERDUE' ? 'Overdue' : 'Pending',
-        }));
-        setInvoices(fetchedInvoices);
-      }
-    }).catch(err => console.error('Failed to fetch invoices', err));
-  }, []);
-
-  const [dateFilter, setDateFilter] = useState("");
-  const [accountFilter, setAccountFilter] = useState("");
-
-  const filteredLedger = ledger.filter((entry) => {
-    let keep = true;
-
-    if (dateFilter && entry.date !== dateFilter) keep = false;
-
-    if (
-      accountFilter &&
-      !entry.account
-        .toLowerCase()
-        .includes(accountFilter.toLowerCase())
-    ) {
-      keep = false;
-    }
-
-    return keep;
-  });
-
-  const totalDebit = filteredLedger.reduce(
-    (sum, e) => sum + e.debit,
-    0
-  );
-
-  const totalCredit = filteredLedger.reduce(
-    (sum, e) => sum + e.credit,
-    0
-  );
-
-  const profit = totalCredit - totalDebit;
-
-  const handlePrintInvoice = (id: string) => {
-    alert(`Printing Invoice ${id}`);
-    window.print();
-  };
-
-  const tabs = [
-    {
-      id: "ledger",
-      label: "General Ledger",
-      icon: BookOpen,
-    },
-    {
-      id: "invoices",
-      label: "Invoices",
-      icon: FileText,
-    },
-    {
-      id: "expenses",
-      label: "Expenses",
-      icon: CreditCard,
-    },
-    {
-      id: "budget",
-      label: "Budgets",
-      icon: PieChart,
-    },
-    {
-      id: "reports",
-      label: "Reports",
-      icon: TrendingUp,
-    },
-  ] as const;
-
+  const [tab, setTab] = useState<Tab>('ledger');
   return (
     <div className="space-y-6">
-      {/* Header */}
-
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-            Finance Dashboard
-          </h1>
-
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Financial accounting, invoicing, budgeting and reporting
-          </p>
-        </div>
-
-        <button className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#ff5a00] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600">
-          <Plus className="h-4 w-4" />
-          New Transaction
-        </button>
-      </div>
-
-      {/* Stats */}
-
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          title="Total Revenue"
-          value="$2.45M"
-          icon={DollarSign}
-          color="emerald"
-        />
-
-        <StatCard
-          title="Total Expenses"
-          value="$1.40M"
-          icon={Wallet}
-          color="rose"
-        />
-
-        <StatCard
-          title="Net Profit"
-          value="$1.05M"
-          icon={Landmark}
-          color="orange"
-        />
-
-        <StatCard
-          title="Transactions"
-          value="1,248"
-          icon={BookOpen}
-          color="blue"
-        />
-      </div>
-
-      {/* Tabs */}
-
-      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-        <nav className="flex min-w-max gap-2">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-medium transition-all ${
-                activeTab === tab.id
-                  ? "bg-[#ff5a00] text-white shadow-sm"
-                  : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-              }`}
-            >
-              <tab.icon className="h-4 w-4" />
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      {/* Ledger */}
-
-      {activeTab === "ledger" && (
-        <div className="space-y-6">
-          {/* Filters */}
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-              <div className="flex flex-col gap-4 md:flex-row">
-                <input
-                  type="date"
-                  value={dateFilter}
-                  onChange={(e) => setDateFilter(e.target.value)}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-[#ff5a00] dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                />
-
-                <input
-                  type="text"
-                  placeholder="Search account..."
-                  value={accountFilter}
-                  onChange={(e) =>
-                    setAccountFilter(e.target.value)
-                  }
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition focus:border-[#ff5a00] dark:border-slate-700 dark:bg-slate-800 dark:text-white md:w-72"
-                />
-              </div>
-
-              <div className="flex gap-3">
-                <button className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
-                  <Download className="mr-2 inline h-4 w-4" />
-                  Export
-                </button>
-
-                <button className="rounded-xl bg-[#ff5a00] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600">
-                  <Plus className="mr-2 inline h-4 w-4" />
-                  Manual Entry
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Table */}
-
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px]">
-                <thead className="bg-slate-50 dark:bg-slate-800">
-                  <tr className="text-left text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    <th className="px-6 py-4">TRX ID</th>
-                    <th className="px-6 py-4">Date</th>
-                    <th className="px-6 py-4">Description</th>
-                    <th className="px-6 py-4">Account</th>
-                    <th className="px-6 py-4 text-right">
-                      Debit
-                    </th>
-                    <th className="px-6 py-4 text-right">
-                      Credit
-                    </th>
-                    <th className="px-6 py-4 text-center">
-                      Status
-                    </th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {filteredLedger.map((entry) => (
-                    <tr
-                      key={entry.id}
-                      className="transition hover:bg-slate-50 dark:hover:bg-slate-800/40"
-                    >
-                      <td className="px-6 py-4 font-mono text-xs text-slate-500">
-                        {entry.id}
-                      </td>
-
-                      <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">
-                        {entry.date}
-                      </td>
-
-                      <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">
-                        {entry.description}
-                      </td>
-
-                      <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">
-                        {entry.account}
-                      </td>
-
-                      <td className="px-6 py-4 text-right font-semibold text-rose-500">
-                        {entry.debit > 0
-                          ? `$${entry.debit.toLocaleString()}`
-                          : "-"}
-                      </td>
-
-                      <td className="px-6 py-4 text-right font-semibold text-emerald-500">
-                        {entry.credit > 0
-                          ? `$${entry.credit.toLocaleString()}`
-                          : "-"}
-                      </td>
-
-                      <td className="px-6 py-4 text-center">
-                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-                          {entry.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-
-                <tfoot className="bg-slate-50 dark:bg-slate-800">
-                  <tr className="font-bold text-slate-900 dark:text-white">
-                    <td
-                      colSpan={4}
-                      className="px-6 py-5 text-right"
-                    >
-                      Totals
-                    </td>
-
-                    <td className="px-6 py-5 text-right text-rose-500">
-                      ${totalDebit.toLocaleString()}
-                    </td>
-
-                    <td className="px-6 py-5 text-right text-emerald-500">
-                      ${totalCredit.toLocaleString()}
-                    </td>
-
-                    <td></td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
-
-          {/* Summary */}
-
-          <div className="grid gap-4 md:grid-cols-3">
-            <SummaryCard
-              title="Total Debit"
-              value={`$${totalDebit.toLocaleString()}`}
-              color="rose"
-            />
-
-            <SummaryCard
-              title="Total Credit"
-              value={`$${totalCredit.toLocaleString()}`}
-              color="emerald"
-            />
-
-            <SummaryCard
-              title="Net Position"
-              value={`$${profit.toLocaleString()}`}
-              color="orange"
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Invoices */}
-
-      {activeTab === "invoices" && (
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {invoices.map((invoice) => (
-            <div
-              key={invoice.id}
-              className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg dark:border-slate-700 dark:bg-slate-900"
-            >
-              <div className="mb-5 flex items-start justify-between">
-                <div>
-                  <h3 className="font-bold text-slate-900 dark:text-white">
-                    {invoice.id}
-                  </h3>
-
-                  <p className="mt-1 text-sm text-slate-500">
-                    {invoice.client}
-                  </p>
-                </div>
-
-                <StatusBadge status={invoice.status} />
-              </div>
-
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Amount</span>
-
-                  <span className="font-semibold text-slate-900 dark:text-white">
-                    ${invoice.amount.toLocaleString()}
-                  </span>
-                </div>
-
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Due Date</span>
-
-                  <span className="text-slate-700 dark:text-slate-300">
-                    {invoice.due}
-                  </span>
-                </div>
-              </div>
-
-              <div className="mt-6 flex gap-3">
-                <button
-                  onClick={() =>
-                    handlePrintInvoice(invoice.id)
-                  }
-                  className="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                >
-                  <Printer className="mr-2 inline h-4 w-4" />
-                  Print
-                </button>
-
-                {invoice.status !== "Paid" && (
-                  <button className="flex-1 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-600">
-                    <CheckCircle className="mr-2 inline h-4 w-4" />
-                    Paid
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Budget */}
-
-      {activeTab === "budget" && (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-            <h3 className="mb-5 text-lg font-bold text-slate-900 dark:text-white">
-              Budget Allocation
-            </h3>
-
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <RechartsPie>
-                  <Pie
-                    data={MOCK_BUDGET}
-                    dataKey="allocated"
-                    innerRadius={70}
-                    outerRadius={100}
-                    paddingAngle={4}
-                  >
-                    {MOCK_BUDGET.map((_, i) => (
-                      <Cell
-                        key={i}
-                        fill={COLORS[i % COLORS.length]}
-                      />
-                    ))}
-                  </Pie>
-
-                  <Tooltip />
-                </RechartsPie>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="mt-4 flex justify-center gap-5">
-              {MOCK_BUDGET.map((item, i) => (
-                <div
-                  key={item.dept}
-                  className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300"
-                >
-                  <div
-                    className="h-3 w-3 rounded-full"
-                    style={{
-                      backgroundColor:
-                        COLORS[i % COLORS.length],
-                    }}
-                  />
-
-                  {item.dept}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            {MOCK_BUDGET.map((item) => {
-              const percent =
-                (item.spent / item.allocated) * 100;
-
-              return (
-                <div
-                  key={item.dept}
-                  className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900"
-                >
-                  <div className="mb-3 flex items-center justify-between">
-                    <h4 className="font-bold text-slate-900 dark:text-white">
-                      {item.dept}
-                    </h4>
-
-                    <span className="text-sm text-slate-500">
-                      {percent.toFixed(0)}%
-                    </span>
-                  </div>
-
-                  <div className="h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                    <div
-                      className={`h-full rounded-full ${
-                        percent > 80
-                          ? "bg-rose-500"
-                          : "bg-[#ff5a00]"
-                      }`}
-                      style={{
-                        width: `${percent}%`,
-                      }}
-                    />
-                  </div>
-
-                  <div className="mt-3 flex justify-between text-sm">
-                    <span className="text-slate-500">
-                      ${item.spent.toLocaleString()} spent
-                    </span>
-
-                    <span className="font-medium text-slate-900 dark:text-white">
-                      ${item.remaining.toLocaleString()} left
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Reports */}
-
-      {activeTab === "reports" && (
-        <div className="grid gap-6 md:grid-cols-3">
-          <ReportCard
-            title="Gross Income"
-            value="$2,450,000"
-            change="+12.4%"
-            positive
-          />
-
-          <ReportCard
-            title="Expenses"
-            value="$1,400,000"
-            change="-2.1%"
-            positive={false}
-          />
-
-          <ReportCard
-            title="Net Profit"
-            value="$1,050,000"
-            change="42.8% Margin"
-            positive
-          />
-        </div>
-      )}
+      <PageHeader title="Financial Ledger" subtitle="Double-entry general ledger, receivables, expenses and budgets" />
+      <Tabs tabs={TABS} active={tab} onChange={setTab} />
+      {tab === 'ledger' && <LedgerTab />}
+      {tab === 'invoices' && <InvoicesTab />}
+      {tab === 'expenses' && <ExpensesTab />}
+      {tab === 'budget' && <BudgetTab />}
+      {tab === 'reports' && <ReportsTab />}
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// Components
-// ─────────────────────────────────────────────────────────────
+// ── Ledger ────────────────────────────────────────────────────────────────────
 
-function StatCard({
-  title,
-  value,
-  icon: Icon,
-  color,
-}: any) {
-  const colors: any = {
-    emerald:
-      "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400",
-    rose:
-      "bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400",
-    orange:
-      "bg-orange-50 text-[#ff5a00] dark:bg-orange-900/20 dark:text-[#ff5a00]",
-    blue:
-      "bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400",
-  };
+function LedgerTab() {
+  const user = useAuthUser();
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false);
+  const q = new URLSearchParams({ page: String(page), limit: '20', sort: 'date', ...(search && { search }) });
+  const ledger = useApi<JournalEntry[]>(`/finance/ledger?${q}`);
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-slate-500">{title}</p>
-
-          <h3 className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">
-            {value}
-          </h3>
+    <Card
+      title="Journal entries"
+      actions={
+        <div className="flex gap-2">
+          <Input placeholder="Search description" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} className="w-56" />
+          {can(user, 'FINANCE') && <Button onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> New entry</Button>}
         </div>
-
-        <div
-          className={`rounded-xl p-3 ${colors[color]}`}
-        >
-          <Icon className="h-5 w-5" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SummaryCard({
-  title,
-  value,
-  color,
-}: any) {
-  const map: any = {
-    rose: "text-rose-500",
-    emerald: "text-emerald-500",
-    orange: "text-[#ff5a00]",
-  };
-
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-      <p className="text-sm text-slate-500">{title}</p>
-
-      <h3
-        className={`mt-2 text-2xl font-bold ${map[color]}`}
-      >
-        {value}
-      </h3>
-    </div>
-  );
-}
-
-function StatusBadge({ status }: any) {
-  const styles: any = {
-    Paid:
-      "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
-    Pending:
-      "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-    Overdue:
-      "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400",
-  };
-
-  return (
-    <span
-      className={`rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wide ${styles[status]}`}
+      }
     >
-      {status}
-    </span>
+      <DataState state={ledger} empty={{ title: 'No journal entries', hint: search ? 'Try another search' : undefined }}>
+        {(entries) => (
+          <>
+            <Table head={['Date', 'Description', 'Lines', 'Debit', 'Credit', 'Status']}>
+              {entries.map((e) => (
+                <tr key={e.id}>
+                  <Td>{date(e.date)}</Td>
+                  <Td className="font-medium">{e.description}</Td>
+                  <Td className="text-xs text-slate-500">
+                    {e.lines.map((l) => (
+                      <div key={l.id}>{l.account?.code} {l.account?.name}: {toNumber(l.debit) > 0 ? `Dr ${money(l.debit)}` : `Cr ${money(l.credit)}`}</div>
+                    ))}
+                  </Td>
+                  <Td>{money(e.totalDebit)}</Td>
+                  <Td>{money(e.totalCredit)}</Td>
+                  <Td><Badge>{e.status}</Badge></Td>
+                </tr>
+              ))}
+            </Table>
+            <Pager meta={ledger.meta} onPage={setPage} />
+          </>
+        )}
+      </DataState>
+      <JournalEntryModal open={open} onClose={() => setOpen(false)} onSaved={ledger.reload} />
+    </Card>
   );
 }
 
-function ReportCard({
-  title,
-  value,
-  change,
-  positive,
-}: any) {
+interface DraftLine { accountId: string; side: 'debit' | 'credit'; amount: string }
+
+function JournalEntryModal({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
+  const accounts = useApi<Account[]>(open ? '/finance/accounts' : null);
+  const [entryDate, setEntryDate] = useState(todayISO());
+  const [description, setDescription] = useState('');
+  const [lines, setLines] = useState<DraftLine[]>([
+    { accountId: '', side: 'debit', amount: '' },
+    { accountId: '', side: 'credit', amount: '' },
+  ]);
+  const totals = useMemo(() => lines.reduce(
+    (t, l) => ({ ...t, [l.side]: t[l.side] + (Number(l.amount) || 0) }), { debit: 0, credit: 0 },
+  ), [lines]);
+  const balanced = totals.debit > 0 && Math.abs(totals.debit - totals.credit) < 0.005;
+
+  const save = useMutation(async () => {
+    await api.post('/finance/ledger', {
+      date: entryDate,
+      description,
+      lines: lines.map((l) => ({ accountId: l.accountId, [l.side]: l.amount })),
+    });
+    onSaved();
+    onClose();
+    setDescription('');
+    setLines([{ accountId: '', side: 'debit', amount: '' }, { accountId: '', side: 'credit', amount: '' }]);
+  });
+
+  const update = (i: number, patch: Partial<DraftLine>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-slate-500">
-            {title}
-          </p>
-
-          <h3 className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">
-            {value}
-          </h3>
+    <Modal title="New journal entry" open={open} onClose={onClose}>
+      <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void save.run(); }}>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Date"><Input type="date" required value={entryDate} onChange={(e) => setEntryDate(e.target.value)} /></Field>
+          <Field label="Description"><Input required maxLength={500} value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
         </div>
+        <div className="space-y-2">
+          {lines.map((l, i) => (
+            <div key={i} className="grid grid-cols-[1fr_100px_110px_32px] gap-2">
+              <Select required value={l.accountId} onChange={(e) => update(i, { accountId: e.target.value })} aria-label="Account">
+                <option value="">Account…</option>
+                {accounts.data?.map((a) => <option key={a.id} value={a.id}>{a.code} {a.name}</option>)}
+              </Select>
+              <Select value={l.side} onChange={(e) => update(i, { side: e.target.value as DraftLine['side'] })} aria-label="Side">
+                <option value="debit">Debit</option>
+                <option value="credit">Credit</option>
+              </Select>
+              <Input required type="number" min="0.01" step="0.01" placeholder="0.00" value={l.amount} onChange={(e) => update(i, { amount: e.target.value })} aria-label="Amount" />
+              <Button type="button" variant="ghost" size="sm" aria-label="Remove line" disabled={lines.length <= 2} onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+          <Button type="button" variant="secondary" size="sm" onClick={() => setLines((ls) => [...ls, { accountId: '', side: 'credit', amount: '' }])}>
+            <Plus className="h-3.5 w-3.5" /> Add line
+          </Button>
+        </div>
+        <p className={balanced ? 'text-sm text-emerald-600' : 'text-sm text-amber-600'}>
+          Debits {money(totals.debit)} · Credits {money(totals.credit)} {balanced ? '· balanced' : '· must balance'}
+        </p>
+        <InlineError message={save.error} />
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button type="submit" disabled={!balanced || save.pending}>{save.pending ? 'Posting…' : 'Post entry'}</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
 
-        <div
-          className={`rounded-xl p-3 ${
-            positive
-              ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400"
-              : "bg-rose-100 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400"
-          }`}
-        >
-          {positive ? (
-            <TrendingUp className="h-5 w-5" />
-          ) : (
-            <TrendingDown className="h-5 w-5" />
+// ── Invoices ──────────────────────────────────────────────────────────────────
+
+const INVOICE_STATUSES: InvoiceStatus[] = ['DRAFT', 'SENT', 'PAID', 'OVERDUE', 'VOID'];
+
+function InvoicesTab() {
+  const user = useAuthUser();
+  const [page, setPage] = useState(1);
+  const [status, setStatus] = useState('');
+  const [open, setOpen] = useState(false);
+  const q = new URLSearchParams({ page: String(page), limit: '20', ...(status && { status }) });
+  const invoices = useApi<Invoice[]>(`/finance/invoices?${q}`);
+  const setInvoiceStatus = useMutation(async (id: string, next: InvoiceStatus) => {
+    await api.patch(`/finance/invoices/${id}`, { status: next });
+    invoices.reload();
+  });
+
+  return (
+    <Card
+      title="Invoices"
+      actions={
+        <div className="flex gap-2">
+          <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} aria-label="Filter by status" className="w-40">
+            <option value="">All statuses</option>
+            {INVOICE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </Select>
+          {can(user, 'FINANCE') && <Button onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> New invoice</Button>}
+        </div>
+      }
+    >
+      <InlineError message={setInvoiceStatus.error} />
+      <DataState state={invoices} empty={{ title: 'No invoices' }}>
+        {(rows) => (
+          <>
+            <Table head={['Number', 'Customer', 'Issued', 'Due', 'Total', 'Status']}>
+              {rows.map((inv) => (
+                <tr key={inv.id}>
+                  <Td className="font-mono text-xs">{inv.number}</Td>
+                  <Td>{inv.customer.name}{inv.customer.company ? <span className="text-xs text-slate-400"> · {inv.customer.company}</span> : null}</Td>
+                  <Td>{date(inv.createdAt)}</Td>
+                  <Td>{date(inv.dueDate)}</Td>
+                  <Td className="font-semibold">{money(inv.total)}</Td>
+                  <Td>
+                    {can(user, 'FINANCE') ? (
+                      <Select aria-label={`Status of ${inv.number}`} value={inv.status} disabled={setInvoiceStatus.pending} onChange={(e) => void setInvoiceStatus.run(inv.id, e.target.value as InvoiceStatus)} className="w-32 py-1 text-xs">
+                        {INVOICE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </Select>
+                    ) : <Badge>{inv.status}</Badge>}
+                  </Td>
+                </tr>
+              ))}
+            </Table>
+            <Pager meta={invoices.meta} onPage={setPage} />
+          </>
+        )}
+      </DataState>
+      <InvoiceModal open={open} onClose={() => setOpen(false)} onSaved={invoices.reload} />
+    </Card>
+  );
+}
+
+function InvoiceModal({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
+  const customers = useApi<Customer[]>(open ? '/customers?limit=100&sort=name&order=asc' : null);
+  const [form, setForm] = useState({ customerId: '', subtotal: '', tax: '', dueDate: '' });
+  const save = useMutation(async () => {
+    await api.post('/finance/invoices', {
+      customerId: form.customerId,
+      subtotal: form.subtotal,
+      tax: form.tax || '0',
+      ...(form.dueDate && { dueDate: form.dueDate }),
+    });
+    onSaved();
+    onClose();
+    setForm({ customerId: '', subtotal: '', tax: '', dueDate: '' });
+  });
+  return (
+    <Modal title="New invoice" open={open} onClose={onClose}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void save.run(); }}>
+        <Field label="Customer">
+          <Select required value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}>
+            <option value="">Select…</option>
+            {customers.data?.map((c) => <option key={c.id} value={c.id}>{c.name}{c.company ? ` (${c.company})` : ''}</option>)}
+          </Select>
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Subtotal"><Input required type="number" min="0" step="0.01" value={form.subtotal} onChange={(e) => setForm({ ...form, subtotal: e.target.value })} /></Field>
+          <Field label="Tax"><Input type="number" min="0" step="0.01" value={form.tax} onChange={(e) => setForm({ ...form, tax: e.target.value })} /></Field>
+        </div>
+        <Field label="Due date"><Input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></Field>
+        <InlineError message={save.error} />
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button type="submit" disabled={save.pending}>{save.pending ? 'Creating…' : 'Create invoice'}</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// ── Expenses ──────────────────────────────────────────────────────────────────
+
+function ExpensesTab() {
+  const user = useAuthUser();
+  const [page, setPage] = useState(1);
+  const expenses = useApi<Expense[]>(`/finance/expenses?page=${page}&limit=20`);
+  const [form, setForm] = useState({ category: '', amount: '', description: '' });
+  const submit = useMutation(async () => {
+    await api.post('/finance/expenses', { category: form.category, amount: form.amount, ...(form.description && { description: form.description }) });
+    setForm({ category: '', amount: '', description: '' });
+    expenses.reload();
+  });
+  const decide = useMutation(async (id: string, status: 'APPROVED' | 'REJECTED' | 'REIMBURSED') => {
+    await api.patch(`/finance/expenses/${id}/status`, { status });
+    expenses.reload();
+  });
+  const isFinance = can(user, 'FINANCE');
+
+  return (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <Card title={isFinance ? 'All expenses' : 'My expenses'} className="lg:col-span-2">
+        <InlineError message={decide.error} />
+        <DataState state={expenses} empty={{ title: 'No expenses yet' }}>
+          {(rows) => (
+            <>
+              <Table head={['Date', 'Category', 'Description', 'Amount', 'Status', '']}>
+                {rows.map((x) => (
+                  <tr key={x.id}>
+                    <Td>{date(x.createdAt)}</Td>
+                    <Td>{x.category}</Td>
+                    <Td className="text-slate-500">{x.description ?? '—'}</Td>
+                    <Td className="font-semibold">{money(x.amount)}</Td>
+                    <Td><Badge>{x.status}</Badge></Td>
+                    <Td>
+                      {isFinance && x.submittedBy !== user?.id && (
+                        <div className="flex gap-1">
+                          {x.status === 'SUBMITTED' && (
+                            <>
+                              <Button size="sm" disabled={decide.pending} onClick={() => void decide.run(x.id, 'APPROVED')}>Approve</Button>
+                              <Button size="sm" variant="secondary" disabled={decide.pending} onClick={() => void decide.run(x.id, 'REJECTED')}>Reject</Button>
+                            </>
+                          )}
+                          {x.status === 'APPROVED' && <Button size="sm" variant="secondary" disabled={decide.pending} onClick={() => void decide.run(x.id, 'REIMBURSED')}>Reimburse</Button>}
+                        </div>
+                      )}
+                    </Td>
+                  </tr>
+                ))}
+              </Table>
+              <Pager meta={expenses.meta} onPage={setPage} />
+            </>
           )}
-        </div>
-      </div>
-
-      <p
-        className={`mt-4 text-sm font-semibold ${
-          positive
-            ? "text-emerald-600"
-            : "text-rose-600"
-        }`}
-      >
-        {change}
-      </p>
+        </DataState>
+      </Card>
+      {can(user, 'STAFF') && (
+        <Card title="Submit an expense">
+          <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void submit.run(); }}>
+            <Field label="Category"><Input required list="expense-categories" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} /></Field>
+            <datalist id="expense-categories">
+              {['Marketing', 'Travel', 'Infrastructure', 'Office', 'Software'].map((c) => <option key={c} value={c} />)}
+            </datalist>
+            <Field label="Amount"><Input required type="number" min="0.01" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
+            <Field label="Description"><Input maxLength={1000} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
+            <InlineError message={submit.error} />
+            <Button type="submit" disabled={submit.pending} className="w-full">{submit.pending ? 'Submitting…' : 'Submit'}</Button>
+          </form>
+        </Card>
+      )}
     </div>
+  );
+}
+
+// ── Budget ────────────────────────────────────────────────────────────────────
+
+function BudgetTab() {
+  const user = useAuthUser();
+  const now = new Date();
+  const [period, setPeriod] = useState(`${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`);
+  const [year, month] = period.split('-').map(Number);
+  const report = useApi<BudgetReport>(`/finance/budget?year=${year}&month=${month}`);
+  const [form, setForm] = useState({ category: '', amount: '' });
+  const save = useMutation(async () => {
+    await api.put('/finance/budget', { category: form.category, amount: form.amount, year, month });
+    setForm({ category: '', amount: '' });
+    report.reload();
+  });
+
+  return (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <Card
+        title={`Budget vs actual · ${monthLabel(period)}`}
+        actions={<Input type="month" value={period} onChange={(e) => e.target.value && setPeriod(e.target.value)} className="w-44" aria-label="Period" />}
+        className="lg:col-span-2"
+      >
+        <DataState state={report} isEmpty={(r) => r.lines.length === 0} empty={{ title: 'No budgets or expenses for this month' }}>
+          {(r) => (
+            <div className="space-y-4">
+              {r.lines.map((l) => {
+                const budget = toNumber(l.budget);
+                const actual = toNumber(l.actual);
+                const pctUsed = budget > 0 ? Math.min(100, (actual / budget) * 100) : actual > 0 ? 100 : 0;
+                const over = actual > budget;
+                return (
+                  <div key={l.category}>
+                    <div className="mb-1 flex justify-between text-sm">
+                      <span className="font-semibold text-slate-700 dark:text-slate-200">{l.category}</span>
+                      <span className={over ? 'font-semibold text-rose-600' : 'text-slate-500'}>
+                        {money(actual)} of {budget > 0 ? money(budget) : 'no budget'}
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-700">
+                      <div className={over ? 'h-2 rounded-full bg-rose-500' : 'h-2 rounded-full bg-[#ff5a00]'} style={{ width: `${pctUsed}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+              <p className="border-t border-slate-100 pt-3 text-sm text-slate-600 dark:border-slate-700 dark:text-slate-300">
+                Total {money(r.totals.actual)} of {money(r.totals.budget)} · variance{' '}
+                <span className={toNumber(r.totals.variance) < 0 ? 'font-semibold text-rose-600' : 'font-semibold text-emerald-600'}>{money(r.totals.variance)}</span>
+              </p>
+            </div>
+          )}
+        </DataState>
+      </Card>
+      {can(user, 'FINANCE') && (
+        <Card title="Set a budget">
+          <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void save.run(); }}>
+            <Field label="Category"><Input required list="budget-categories" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} /></Field>
+            <datalist id="budget-categories">
+              {report.data?.lines.map((l) => <option key={l.category} value={l.category} />)}
+            </datalist>
+            <Field label={`Amount for ${monthLabel(period)}`}><Input required type="number" min="0" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
+            <InlineError message={save.error} />
+            <Button type="submit" disabled={save.pending} className="w-full">{save.pending ? 'Saving…' : 'Save budget'}</Button>
+          </form>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ── Reports (P&L) ─────────────────────────────────────────────────────────────
+
+function ReportsTab() {
+  const summary = useApi<BISummary>('/bi/summary?months=12');
+  return (
+    <DataState state={summary} isEmpty={() => false}>
+      {(s) => (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard label="Revenue (12 mo)" value={money(s.totals.revenue)} tone="brand" />
+            <StatCard label="Expenses (12 mo)" value={money(s.totals.expenses)} />
+            <StatCard label="Payroll (12 mo)" value={money(s.totals.payroll)} />
+            <StatCard label="Net profit (12 mo)" value={money(s.totals.netProfit)} tone={toNumber(s.totals.netProfit) >= 0 ? 'good' : 'bad'} />
+          </div>
+          <Card title="Profit & loss by month">
+            <Table head={['Month', 'Revenue', 'Collected', 'Expenses', 'Payroll', 'Net profit']}>
+              {s.months.map((m) => (
+                <tr key={m.month}>
+                  <Td className="font-medium">{monthLabel(m.month)}</Td>
+                  <Td>{money(m.revenue)}</Td>
+                  <Td>{money(m.collected)}</Td>
+                  <Td>{money(m.expenses)}</Td>
+                  <Td>{money(m.payroll)}</Td>
+                  <Td className={toNumber(m.netProfit) >= 0 ? 'font-semibold text-emerald-600' : 'font-semibold text-rose-600'}>{money(m.netProfit)}</Td>
+                </tr>
+              ))}
+            </Table>
+          </Card>
+        </div>
+      )}
+    </DataState>
   );
 }

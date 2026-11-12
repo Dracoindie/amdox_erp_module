@@ -6,6 +6,7 @@ import { ROLES, resolveActingEmployee, hasRole, ownEmployeeId } from '../middlew
 import { ok, created } from '../utils/response';
 import { prisma } from '../utils/prisma';
 import { HttpError, notFound } from '../utils/httpError';
+import { notifyEmployee, notifyRoles } from '../services/notify.service';
 
 const router = Router();
 router.use(requireAuth);
@@ -50,6 +51,8 @@ router.post('/', requireRole(...ROLES.STAFF), ...endpoint({ body: createSchema }
     },
     include,
   });
+  await notifyRoles(['HR_MANAGER'], 'info', 'Leave request pending',
+    `${leave.employee.name}: ${body.type.toLowerCase()} ${body.fromDate} – ${body.toDate}`);
   return created(res, leave, 'Leave request submitted');
 }));
 
@@ -67,6 +70,9 @@ for (const [action, status] of [['approve', 'APPROVED'], ['reject', 'REJECTED']]
     });
     if (count === 0) throw new HttpError(409, `Leave request is already ${leave.status.toLowerCase()}`);
     const updated = await prisma.leaveRequest.findUniqueOrThrow({ where: { id: params.id }, include });
+    await notifyEmployee(leave.employeeId, status === 'APPROVED' ? 'success' : 'alert',
+      `Leave ${status.toLowerCase()}`,
+      `${leave.type.toLowerCase()} leave ${leave.fromDate.toISOString().slice(0, 10)} – ${leave.toDate.toISOString().slice(0, 10)}`);
     return ok(res, updated, `Leave ${status.toLowerCase()}`);
   }));
 }

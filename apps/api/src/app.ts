@@ -14,6 +14,7 @@ import { prisma } from './utils/prisma';
 import { errorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
 import { csrfProtection, issueCsrfToken, CSRF_HEADER } from './middleware/csrf';
+import { auditTrail } from './middleware/auditTrail';
 
 import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/user.routes';
@@ -29,6 +30,7 @@ import leadRoutes from './routes/lead.routes';
 import notificationRoutes from './routes/notification.routes';
 import adminRoutes from './routes/admin.routes';
 import biRoutes from './routes/bi.routes';
+import salesOrderRoutes from './routes/salesOrder.routes';
 
 const app: Application = express();
 
@@ -93,6 +95,7 @@ app.get('/', (_req, res) => {
 
 app.get('/api/v1/csrf-token', issueCsrfToken);
 app.use(csrfProtection);
+app.use(auditTrail);
 
 // ─── API routes ───────────────────────────────────────────────────────────────
 
@@ -111,6 +114,7 @@ app.use(`${BASE}/leads`, leadRoutes);
 app.use(`${BASE}/notifications`, notificationRoutes);
 app.use(`${BASE}/admin`, adminRoutes);
 app.use(`${BASE}/bi`, biRoutes);
+app.use(`${BASE}/sales-orders`, salesOrderRoutes);
 
 // ─── Errors ───────────────────────────────────────────────────────────────────
 
