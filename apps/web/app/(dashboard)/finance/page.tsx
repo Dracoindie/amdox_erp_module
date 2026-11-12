@@ -31,7 +31,10 @@ export default function FinancePage() {
   const [tab, setTab] = useTabParam(TABS);
   return (
     <div className="space-y-6">
-      <PageHeader title="Finance" description="Double-entry general ledger, receivables, expenses and budgets." />
+      <PageHeader
+        title={books ? 'Finance' : 'My expenses'}
+        description={books ? 'Double-entry general ledger, receivables, expenses and budgets.' : 'Submit expense claims and follow their approval status.'}
+      />
       <Tabs tabs={TABS} active={tab} onChange={setTab} label="Finance sections" />
       <TabPanel id={tab}>
         {tab === 'ledger' && <LedgerTab />}
@@ -340,12 +343,14 @@ function InvoiceForm({ onDone, onCancel }: { onDone: () => void; onCancel: () =>
 // ── Expenses ──────────────────────────────────────────────────────────────────
 
 const EXPENSE_CATEGORIES = ['Marketing', 'Travel', 'Infrastructure', 'Office', 'Software'];
+const EXPENSE_STATUSES = ['SUBMITTED', 'APPROVED', 'REJECTED', 'REIMBURSED'] as const satisfies readonly Expense['status'][];
 
 function ExpensesTab() {
   const user = useAuthUser();
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<SortState>({ key: 'createdAt', order: 'desc' });
-  const expenses = useApi<Expense[]>(`/finance/expenses?${new URLSearchParams({ page: String(page), limit: '20', ...sortQuery(sort) })}`);
+  const [status, setStatus] = useState<'' | Expense['status']>('');
+  const expenses = useApi<Expense[]>(`/finance/expenses?${new URLSearchParams({ page: String(page), limit: '20', ...sortQuery(sort), ...(status && { status }) })}`);
   const isFinance = can(user, 'FINANCE');
   const seesAll = canRead(user, 'FINANCE');
   const canSubmit = can(user, 'EXPENSE_SUBMIT');
@@ -381,8 +386,24 @@ function ExpensesTab() {
 
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-      <Card title={seesAll ? 'All expense claims' : 'My expense claims'} flush className={canSubmit ? 'xl:col-span-2' : 'xl:col-span-3'}>
-        <DataState state={expenses} empty={{ icon: Receipt, title: 'No expense claims yet', description: canSubmit ? 'Submit a claim with the form.' : undefined }}>
+      <Card
+        title={seesAll ? 'All expense claims' : 'My expense claims'}
+        description={seesAll ? undefined : 'Finance approves or rejects each claim; approved claims are then reimbursed.'}
+        actions={
+          <Select aria-label="Filter by status" value={status} onChange={(e) => { setStatus(e.target.value as typeof status); setPage(1); }} className="w-40">
+            <option value="">All statuses</option>
+            {EXPENSE_STATUSES.map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
+          </Select>
+        }
+        flush
+        className={canSubmit ? 'xl:col-span-2' : 'xl:col-span-3'}
+      >
+        <DataState
+          state={expenses}
+          empty={status
+            ? { icon: Receipt, title: `No ${titleCase(status).toLowerCase()} claims` }
+            : { icon: Receipt, title: 'No expense claims yet', description: canSubmit ? 'Submit a claim with the form.' : undefined }}
+        >
           {(rows) => (
             <DataTable
               caption="Expense claims"

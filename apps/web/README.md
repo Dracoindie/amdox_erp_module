@@ -33,6 +33,6 @@ Colours, surfaces and text are semantic tokens defined once in `app/globals.css`
 pnpm --filter web dev            # http://localhost:3000
 pnpm --filter web check-types
 pnpm --filter web lint
-pnpm --filter web test:e2e       # Playwright smoke test; needs API + web running and a seeded DB (WEB_URL to override)
+pnpm --filter web test:e2e       # Playwright smoke + axe (WCAG 2.1 AA) tests; need API + web running and a seeded DB (WEB_URL to override)
 pnpm --filter web ui:capture     # screenshots of every page, role, width and theme → ui-audit/after
 ```

@@ -18,7 +18,7 @@ const ACCESS: Record<(typeof ROLES)[number], string[]> = {
   finance: ['/', '/finance', '/hr', '/scm', '/crm', '/bi', '/settings'], // hr = directory/payroll, scm = purchasing, crm = customers/orders
   inventory: ['/', '/finance', '/hr', '/scm', '/settings'], //        hr = self-service
   sales: ['/', '/finance', '/hr', '/scm', '/crm', '/settings'], //    scm = stock levels
-  employee: ['/', '/hr', '/settings'],
+  employee: ['/', '/finance', '/hr', '/settings'], //                 finance = own expense claims only
   viewer: PAGES,
 };
 const ADMIN_PW = process.env.ADMIN_PASSWORD || 'Admin@1234';
@@ -122,6 +122,40 @@ test('modal traps focus and closes with Escape; form shows inline errors', async
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
   await expect(opener).toBeFocused();
+});
+
+test('employee submits an expense claim and sees it with its status; no approve controls', async ({ page }) => {
+  const problems = watchConsole(page);
+  await signIn(page, 'employee');
+  await page.goto('/finance');
+  await settle(page);
+  // Only their own claims: a "My expenses" page with no other finance tabs
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('My expenses');
+  await expect(page.getByRole('tab')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'My expense claims' })).toBeVisible();
+  const note = `Smoke test claim ${Date.now()}`;
+  await page.getByLabel('Category').fill('Travel');
+  await page.getByLabel('Amount').fill('1234.50');
+  await page.getByLabel('Description').fill(note);
+  await page.getByRole('button', { name: 'Submit expense' }).click();
+  const row = page.getByRole('row').filter({ hasText: note });
+  await expect(row).toBeVisible({ timeout: 15_000 });
+  await expect(row).toContainText('₹1,234.50');
+  await expect(row).toContainText(/submitted/i);
+  await expect(page.getByRole('button', { name: /^(Approve|Reject)$/ })).toHaveCount(0);
+  // Status filter
+  await page.getByLabel('Filter by status').selectOption('REJECTED');
+  await settle(page);
+  await expect(page.getByRole('row').filter({ hasText: note })).toHaveCount(0);
+  expect(problems, problems.join('\n')).toEqual([]);
+});
+
+test('payroll screens say the deduction rates are simplified', async ({ page }) => {
+  await signIn(page, 'hr');
+  await page.goto('/hr?tab=payroll');
+  await settle(page);
+  await expect(page.getByText('Simplified payroll')).toBeVisible();
+  await expect(page.getByText(/placeholder flat rates/)).toBeVisible();
 });
 
 test('unknown route shows the 404 page', async ({ page }) => {

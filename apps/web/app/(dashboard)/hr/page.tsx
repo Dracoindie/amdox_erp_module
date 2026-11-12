@@ -15,7 +15,8 @@ import {
   type Column, type SortState,
 } from '../../../components/ui';
 
-// Same rules as the API (payroll.service.ts)
+// Same rules as the API (payroll.service.ts). PLACEHOLDER rates: a flat 20% tax
+// and 5% insurance, not Indian payroll rules (TDS slabs, PF, ESI, professional tax).
 const TAX_RATE = 0.2;
 const INSURANCE_RATE = 0.05;
 const round2 = (v: number) => Math.round(v * 100) / 100;
@@ -393,8 +394,8 @@ function PayrollAdmin() {
   const previewColumns: Column<Row>[] = [
     { key: 'name', header: 'Employee', primary: true, cell: (p) => <Person name={p.name} sub={p.title} /> },
     { key: 'gross', header: 'Gross', numeric: true, cell: (p) => money(p.gross) },
-    { key: 'tax', header: 'Tax (20%)', numeric: true, cell: (p) => <span className="text-fg-muted">−{money(p.taxes)}</span> },
-    { key: 'ins', header: 'Insurance (5%)', numeric: true, cell: (p) => <span className="text-fg-muted">−{money(p.insurance)}</span> },
+    { key: 'tax', header: 'Tax (20%, placeholder)', numeric: true, cell: (p) => <span className="text-fg-muted">−{money(p.taxes)}</span> },
+    { key: 'ins', header: 'Insurance (5%, placeholder)', numeric: true, cell: (p) => <span className="text-fg-muted">−{money(p.insurance)}</span> },
     { key: 'net', header: 'Net', numeric: true, cell: (p) => <span className="font-semibold">{money(p.net)}</span> },
   ];
   const runColumns: Column<PayrollRun>[] = [
@@ -429,6 +430,7 @@ function PayrollAdmin() {
           )}
         </div>
         {!can(user, 'HR') && !current && <Alert tone="info" className="mt-4">Only HR can run payroll. Finance can review the preview and history.</Alert>}
+        <SimplifiedPayrollNotice className="mt-4" />
       </Card>
 
       {!current && (
@@ -474,14 +476,27 @@ function RunPayslips({ id }: { id: string }) {
   );
 }
 
+/** Payroll deductions are placeholders; say so wherever amounts are shown. */
+function SimplifiedPayrollNotice({ className }: { className?: string }) {
+  return (
+    <Alert tone="warning" title="Simplified payroll" className={className}>
+      Deductions use placeholder flat rates: 20% tax and 5% insurance on gross pay. They are not Indian payroll rules
+      (no TDS slabs, PF, ESI or professional tax), so these amounts are illustrative, not real take-home pay.
+    </Alert>
+  );
+}
+
 function MyPayslips() {
   const slips = useApi<Payslip[]>('/payroll/my-payslips');
   return (
-    <Card title="My payslips" flush>
-      <DataState state={slips} empty={{ icon: CreditCard, title: 'No payslips yet', description: 'Payslips appear here after each monthly payroll run.' }}>
-        {(rows) => <PayslipTable slips={rows} showPeriod />}
-      </DataState>
-    </Card>
+    <div className="space-y-4">
+      <SimplifiedPayrollNotice />
+      <Card title="My payslips" flush>
+        <DataState state={slips} empty={{ icon: CreditCard, title: 'No payslips yet', description: 'Payslips appear here after each monthly payroll run.' }}>
+          {(rows) => <PayslipTable slips={rows} showPeriod />}
+        </DataState>
+      </Card>
+    </div>
   );
 }
 
