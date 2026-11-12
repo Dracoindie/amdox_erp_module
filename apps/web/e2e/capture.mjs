@@ -25,24 +25,24 @@ const ROLES = ['admin', 'hr', 'finance', 'inventory', 'sales', 'employee', 'view
 // path, tabs (by visible tab label; null = page has no tabs)
 const PAGES = [
   { id: 'dashboard', path: '/', tabs: null },
-  { id: 'finance', path: '/finance', tabs: ['General Ledger', 'Invoices', 'Expenses', 'Budgets', 'Reports'] },
-  { id: 'hr', path: '/hr', tabs: ['Directory', 'Leave', 'Attendance', 'Payroll', 'Org Chart'] },
-  { id: 'scm', path: '/scm', tabs: ['Inventory', 'Purchase Orders', 'Vendors', 'AI Forecast'] },
-  { id: 'crm', path: '/crm', tabs: ['Sales Pipeline', 'Contacts', 'Sales Orders'] },
-  { id: 'bi', path: '/bi', tabs: ['Dashboards', 'Report Builder'] },
-  { id: 'settings', path: '/settings', tabs: ['General', 'Users & Roles', 'Audit Log', 'System Health'] },
+  { id: 'finance', path: '/finance', tabs: ['General ledger', 'Invoices', 'Expenses', 'Budgets', 'Reports'] },
+  { id: 'hr', path: '/hr', tabs: ['Directory', 'Leave', 'Attendance', /^(Payroll|My payslips)$/, 'Org chart'] },
+  { id: 'scm', path: '/scm', tabs: ['Inventory', 'Purchase orders', 'Vendors', 'Demand forecast'] },
+  { id: 'crm', path: '/crm', tabs: ['Pipeline', 'Customers', 'Sales orders'] },
+  { id: 'bi', path: '/bi', tabs: ['Dashboards', 'Report builder'] },
+  { id: 'settings', path: '/settings', tabs: ['General', 'Users & roles', 'Audit log', 'System health'] },
 ];
 
 // Modals opened from a page/tab by a button label (admin only)
 const MODALS = [
-  { page: '/finance', tab: 'General Ledger', button: /new entry/i, id: 'finance-journal' },
+  { page: '/finance', tab: 'General ledger', button: /new entry/i, id: 'finance-journal' },
   { page: '/finance', tab: 'Invoices', button: /new invoice/i, id: 'finance-invoice' },
   { page: '/hr', tab: 'Directory', button: /add employee/i, id: 'hr-employee' },
-  { page: '/scm', tab: 'Inventory', button: /stock movement/i, id: 'scm-movement' },
-  { page: '/scm', tab: 'Inventory', button: /^\s*(new )?product\s*$/i, id: 'scm-product' },
-  { page: '/scm', tab: 'Purchase Orders', button: /new po|new purchase order/i, id: 'scm-po' },
-  { page: '/crm', tab: 'Sales Pipeline', button: /new lead/i, id: 'crm-lead' },
-  { page: '/crm', tab: 'Sales Orders', button: /new order|new sales order/i, id: 'crm-order' },
+  { page: '/scm', tab: 'Inventory', button: /record movement/i, id: 'scm-movement' },
+  { page: '/scm', tab: 'Inventory', button: /new product/i, id: 'scm-product' },
+  { page: '/scm', tab: 'Purchase orders', button: /new purchase order/i, id: 'scm-po' },
+  { page: '/crm', tab: 'Pipeline', button: /new lead/i, id: 'crm-lead' },
+  { page: '/crm', tab: 'Sales orders', button: /new order/i, id: 'crm-order' },
 ];
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
@@ -92,7 +92,7 @@ async function login(page, role) {
 }
 
 async function openTab(page, label) {
-  const tab = page.getByRole('tab', { name: label, exact: true });
+  const tab = label instanceof RegExp ? page.getByRole('tab', { name: label }) : page.getByRole('tab', { name: label, exact: true });
   if (!(await tab.count())) {
     report.missing.push(`tab "${label}" on ${page.url()}`);
     return false;
@@ -129,7 +129,7 @@ async function capturePages(browser, role, theme, widths) {
     const views = p.tabs ?? [null];
     for (const t of views) {
       if (t && !(await openTab(page, t))) continue;
-      const base = `${role}--${p.id}${t ? `--${slug(t)}` : ''}--${theme}`;
+      const base = `${role}--${p.id}${t ? `--${slug(t instanceof RegExp ? 'payroll' : t)}` : ''}--${theme}`;
       for (const [wName, w] of widths) {
         await page.setViewportSize({ width: w, height: 900 });
         await page.waitForTimeout(350);
@@ -138,7 +138,7 @@ async function capturePages(browser, role, theme, widths) {
       }
       await page.setViewportSize({ width: 1440, height: 900 });
       if (role === 'admin' && theme === 'light') {
-        const key = `${p.id}${t ? `/${t}` : ''}`;
+        const key = `${p.id}${t ? `/${t instanceof RegExp ? 'payroll' : t}` : ''}`;
         const res = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze().catch(() => null);
         if (res) report.axe[key] = res.violations.map((v) => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.length, sample: v.nodes.slice(0, 2).map((n) => n.target.join(' ')) }));
       }
@@ -165,6 +165,11 @@ async function captureExtras(browser, theme) {
       await btn.first().click();
       await settle(page, 400);
       await shot(page, `modal--${m.id}--${theme}--${wName}`);
+      if (m.id === 'finance-invoice') {
+        await page.getByRole('dialog').getByRole('button', { name: /create invoice/i }).click().catch(() => undefined);
+        await page.waitForTimeout(300);
+        await shot(page, `form--invoice-validation--${theme}--${wName}`);
+      }
       await page.keyboard.press('Escape');
       await page.waitForTimeout(200);
     }
@@ -224,7 +229,7 @@ async function captureExtras(browser, theme) {
       if (route.request().method() !== 'GET' || /\/auth\/|csrf-token|\/bi\/|\/notifications|\/budget|\/health|system-health/.test(u.pathname)) return route.continue();
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: [], meta: { page: 1, limit: 20, total: 0, totalPages: 0 } }) });
     });
-    for (const [p, tab] of [['/finance', 'General Ledger'], ['/hr', 'Directory'], ['/scm', 'Inventory'], ['/crm', 'Contacts'], ['/crm', 'Sales Pipeline']]) {
+    for (const [p, tab] of [['/finance', 'General ledger'], ['/hr', 'Directory'], ['/scm', 'Inventory'], ['/crm', 'Customers'], ['/crm', 'Pipeline']]) {
       await page.goto(`${WEB}${p}`);
       await settle(page);
       await openTab(page, tab);

@@ -64,7 +64,7 @@ export const titleCase = (v: string) => v.toLowerCase().replace(/_/g, ' ').repla
 
 /** Role enum → "Finance manager" */
 export const roleLabel = (v: string) => {
-  const s = v.toLowerCase().replace(/_/g, ' ').replace(/hr/, 'HR');
+  const s = v.toLowerCase().replace(/_/g, ' ').replace(/\bhr\b/, 'HR');
   return s.charAt(0).toUpperCase() + s.slice(1);
 };
 
