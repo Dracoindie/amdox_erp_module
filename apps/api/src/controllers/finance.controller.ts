@@ -3,7 +3,7 @@ import { prisma } from '../utils/prisma';
 import { ok, created, listQuery, paging, buildMeta } from '../utils/response';
 import { endpoint, idParams, uuid, isoDate } from '../middleware/validate';
 import { HttpError } from '../utils/httpError';
-import { ROLES, hasRole } from '../middleware/roles';
+import { READ, hasRole } from '../middleware/roles';
 import { Decimal, nonNegativeMoney, positiveMoney, sum } from '../utils/money';
 import { nextCounterValue } from '../services/counter.service';
 import { notifyUsers } from '../services/notify.service';
@@ -151,7 +151,7 @@ const expenseQuery = listQuery(['createdAt', 'amount', 'category']).extend({
 
 // Finance (and read-only auditors) see every expense; staff see their own.
 export const listExpenses = endpoint({ query: expenseQuery }, async ({ query }, req, res) => {
-  const seesAll = hasRole(req, [...ROLES.FINANCE, 'READ_ONLY']);
+  const seesAll = hasRole(req, READ.FINANCE);
   const where = {
     ...(seesAll ? {} : { submittedBy: req.user!.userId }),
     ...(query.status && { status: query.status }),

@@ -3,13 +3,13 @@ import {
   listEmployees, getEmployee, createEmployee, updateEmployee, archiveEmployee, listDepartments,
 } from '../controllers/employee.controller';
 import { requireAuth, requireRole } from '../middleware/auth.middleware';
-import { ROLES } from '../middleware/roles';
+import { READ, ROLES } from '../middleware/roles';
 
 const router = Router();
 router.use(requireAuth);
 
-router.get('/', ...listEmployees);
-router.get('/departments', ...listDepartments);
+router.get('/', requireRole(...READ.PEOPLE), ...listEmployees);
+router.get('/departments', requireRole(...READ.PEOPLE), ...listDepartments);
 router.get('/:id', ...getEmployee);
 router.post('/', requireRole(...ROLES.HR), ...createEmployee);
 router.patch('/:id', requireRole(...ROLES.HR), ...updateEmployee);

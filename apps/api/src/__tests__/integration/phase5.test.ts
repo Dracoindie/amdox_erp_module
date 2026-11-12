@@ -70,12 +70,28 @@ describe('BI summary', () => {
     await admin.agent.get('/api/v1/bi/summary?months=100').set(admin.auth).expect(422);
   });
 
-  it('overview returns KPI shapes; activity only for admins', async () => {
+  it('overview sections follow read access; employees get only their own section', async () => {
     const res = await admin.agent.get('/api/v1/bi/overview').set(admin.auth).expect(200);
-    expect(res.body.data).toMatchObject({ activeEmployees: 1, recentActivity: expect.any(Array) });
-    const emp = await loginAs('EMPLOYEE');
+    expect(res.body.data).toMatchObject({
+      people: { activeEmployees: 1 },
+      finance: { revenueYtd: expect.any(String) },
+      inventory: { lowStock: expect.any(Object) },
+      sales: { pipeline: expect.any(Object) },
+      recentActivity: expect.any(Array),
+    });
+
+    const emp = await loginAs('EMPLOYEE', { withEmployee: true });
     const asEmp = await emp.agent.get('/api/v1/bi/overview').set(emp.auth).expect(200);
-    expect(asEmp.body.data.recentActivity).toBeNull();
+    expect(asEmp.body.data).toMatchObject({
+      finance: null, people: null, payroll: null, inventory: null, sales: null, recentActivity: null,
+      me: { pendingLeave: 0, clockedIn: false, latestPayslip: null },
+    });
+
+    const sales = await loginAs('SALES_REP');
+    const asSales = await sales.agent.get('/api/v1/bi/overview').set(sales.auth).expect(200);
+    expect(asSales.body.data.finance).toBeNull();
+    expect(asSales.body.data.sales).not.toBeNull();
+    expect(asSales.body.data.inventory).not.toBeNull(); // stock availability
   });
 });
 

@@ -4,12 +4,14 @@ import { ok, created, listQuery, paging, buildMeta } from '../utils/response';
 import { endpoint, idParams, uuid } from '../middleware/validate';
 import { notFound } from '../utils/httpError';
 import { positiveMoney } from '../utils/money';
-import { ROLES, hasRole } from '../middleware/roles';
+import { READ, hasRole } from '../middleware/roles';
+import { HttpError } from '../utils/httpError';
 import type { Request } from 'express';
 
-// Salaries are visible to HR, finance and admins only.
-function redactSalary<T extends { grossSalary?: unknown }>(req: Request, e: T): T {
-  if (hasRole(req, ROLES.PAYROLL_VIEW)) return e;
+// Salaries are visible to roles that may read payroll (admin, HR, finance, read-only).
+// Everyone may see their own salary.
+function redactSalary<T extends { grossSalary?: unknown; userId?: string | null }>(req: Request, e: T): T {
+  if (hasRole(req, READ.PAYROLL) || (e.userId && e.userId === req.user?.userId)) return e;
   const copy = { ...e };
   delete copy.grossSalary;
   return copy;
@@ -59,6 +61,10 @@ export const getEmployee = endpoint({ params: idParams }, async ({ params }, req
     include: { department: true },
   });
   if (!employee) throw notFound('Employee');
+  // Without directory access, an employee may only read their own profile
+  if (!hasRole(req, READ.PEOPLE) && employee.userId !== req.user!.userId) {
+    throw new HttpError(403, 'You can only view your own profile');
+  }
   return ok(res, redactSalary(req, employee));
 });
 

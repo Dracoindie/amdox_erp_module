@@ -426,15 +426,32 @@ export interface BISummary {
   totals: { revenue: Money; collected: Money; expenses: Money; payroll: Money; netProfit: Money };
 }
 
+/**
+ * GET /bi/overview. Each section is null when the signed-in role may not read
+ * that module (see apps/api/src/middleware/roles.ts → READ).
+ */
 export interface DashboardOverview {
-  revenueYtd: Money;
-  activeEmployees: number;
-  openInvoices: { count: number; total: Money };
-  lowStock: { count: number; skus: string[] };
-  pipeline: { count: number; value: Money };
-  latestPayroll: { period: string; totalNet: Money; status: PayrollStatus } | null;
-  trend: BIMonth[];
-  headcountByDepartment: Array<{ department: string; count: number }>;
-  /** Only present for SUPER_ADMIN */
+  finance: {
+    revenueYtd: Money;
+    openInvoices: { count: number; total: Money };
+    trend: BIMonth[];
+  } | null;
+  people: {
+    activeEmployees: number;
+    headcountByDepartment: Array<{ department: string; count: number }>;
+  } | null;
+  payroll: {
+    latest: { period: string; totalNet: Money; status: PayrollStatus } | null;
+  } | null;
+  inventory: { lowStock: { count: number; skus: string[] } } | null;
+  sales: { pipeline: { count: number; value: Money } } | null;
+  /** The signed-in user's own records (null when the account has no employee record) */
+  me: {
+    employeeName: string;
+    pendingLeave: number;
+    clockedIn: boolean;
+    latestPayslip: { period: string; net: Money } | null;
+  } | null;
+  /** SUPER_ADMIN and READ_ONLY only */
   recentActivity: Array<{ id: string; action: string; entity: string; user: string; timestamp: ISODate }> | null;
 }

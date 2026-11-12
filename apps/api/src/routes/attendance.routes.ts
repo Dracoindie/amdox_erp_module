@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, requireRole } from '../middleware/auth.middleware';
 import { endpoint, uuid } from '../middleware/validate';
-import { ROLES, resolveActingEmployee, hasRole } from '../middleware/roles';
+import { READ, ROLES, resolveActingEmployee, hasRole } from '../middleware/roles';
 import { ok, created } from '../utils/response';
 import { prisma } from '../utils/prisma';
 import { HttpError, notFound } from '../utils/httpError';
@@ -66,9 +66,9 @@ const historyQuery = z.object({
   limit: z.coerce.number().int().positive().max(100).default(30),
 }).strict();
 
-// HR/admins see everyone (optionally filtered); others only their own records.
+// HR, admins and read-only auditors see everyone (optionally filtered); others only their own.
 router.get('/history', ...endpoint({ query: historyQuery }, async ({ query }, req, res) => {
-  const where = hasRole(req, ROLES.HR)
+  const where = hasRole(req, READ.PEOPLE_RECORDS)
     ? (query.employeeId ? { employeeId: query.employeeId } : {})
     : { employeeId: await resolveActingEmployee(req, query.employeeId) };
 

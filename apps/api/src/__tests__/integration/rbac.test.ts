@@ -42,7 +42,10 @@ const RESTRICTED: Array<[Method, string, Role]> = [
   ['get', '/api/v1/payroll', 'EMPLOYEE'],
   ['get', '/api/v1/users', 'HR_MANAGER'],
   ['get', '/api/v1/admin/audit-logs', 'FINANCE_MANAGER'],
-  ['get', '/api/v1/admin/system-health', 'READ_ONLY'],
+  ['get', '/api/v1/admin/system-health', 'HR_MANAGER'],
+  ['post', '/api/v1/users', 'READ_ONLY'],
+  ['patch', `/api/v1/users/${ID}`, 'READ_ONLY'],
+  ['post', '/api/v1/finance/expenses', 'EMPLOYEE'],
 ];
 
 describe('RBAC: restricted routes return 403 for unauthorised roles', () => {
@@ -165,12 +168,21 @@ describe('ownership: leave requests', () => {
   });
 });
 
-describe('ownership: salaries', () => {
-  it('hides grossSalary from roles without payroll access', async () => {
-    const hr = await loginAs('HR_MANAGER', { withEmployee: true });
+describe('ownership: employee profiles and salaries', () => {
+  it('employees read only their own profile (with salary); directory needs HR/finance/RO', async () => {
     const emp = await loginAs('EMPLOYEE', { withEmployee: true });
-    const asEmp = await emp.agent.get('/api/v1/employees').set(emp.auth).expect(200);
-    expect(asEmp.body.data[0]).not.toHaveProperty('grossSalary');
+    const other = await loginAs('SALES_REP', { withEmployee: true });
+    await emp.agent.get('/api/v1/employees').set(emp.auth).expect(403);
+    const own = await emp.agent.get(`/api/v1/employees/${emp.employee!.id}`).set(emp.auth).expect(200);
+    expect(own.body.data).toHaveProperty('grossSalary');
+    await emp.agent.get(`/api/v1/employees/${other.employee!.id}`).set(emp.auth).expect(403);
+  });
+
+  it('READ_ONLY sees salaries (reads payroll); HR sees salaries', async () => {
+    const ro = await loginAs('READ_ONLY');
+    const hr = await loginAs('HR_MANAGER', { withEmployee: true });
+    const asRo = await ro.agent.get('/api/v1/employees').set(ro.auth).expect(200);
+    expect(asRo.body.data[0]).toHaveProperty('grossSalary');
     const asHr = await hr.agent.get('/api/v1/employees').set(hr.auth).expect(200);
     expect(asHr.body.data[0]).toHaveProperty('grossSalary');
   });
@@ -179,7 +191,7 @@ describe('ownership: salaries', () => {
 describe('expenses', () => {
   it('finance cannot approve their own expense; staff see only their own', async () => {
     const fin = await loginAs('FINANCE_MANAGER');
-    const emp = await loginAs('EMPLOYEE');
+    const emp = await loginAs('INVENTORY_MANAGER');
     const own = await fin.agent.post('/api/v1/finance/expenses').set(fin.auth).send({ category: 'Travel', amount: 50 }).expect(201);
     await fin.agent.patch(`/api/v1/finance/expenses/${own.body.data.id}/status`).set(fin.auth).send({ status: 'APPROVED' }).expect(403);
 

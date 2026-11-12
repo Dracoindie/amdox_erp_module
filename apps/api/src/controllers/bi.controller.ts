@@ -12,7 +12,7 @@ import type { BIMonth, BISummary, DashboardOverview } from '@repo/types';
 import { prisma } from '../utils/prisma';
 import { ok } from '../utils/response';
 import { endpoint, noInput } from '../middleware/validate';
-import { ROLES, hasRole } from '../middleware/roles';
+import { READ, hasRole } from '../middleware/roles';
 import { Decimal, sum } from '../utils/money';
 
 const REVENUE_STATUSES = ['SENT', 'PAID', 'OVERDUE'] as const;
@@ -123,68 +123,117 @@ export const getBISummary = endpoint({ query: summaryQuery }, async ({ query }, 
   return ok(res, data, 'BI summary retrieved');
 });
 
-/** GET /bi/overview — KPIs for the dashboard home page. */
+/**
+ * GET /bi/overview — dashboard home. Every section is computed only when the
+ * caller may read that module (READ in middleware/roles.ts); otherwise null.
+ * `me` holds the caller's own records for self-service.
+ */
 export const getOverview = endpoint({ query: noInput }, async (_input, req, res) => {
   const now = new Date();
   const yearStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+  const can = (group: readonly string[]) => hasRole(req, group);
 
-  const [revenueYtd, activeEmployees, openInvoices, levels, pipeline, latestRun, trend, departments, unassigned] =
-    await Promise.all([
+  const finance = async (): Promise<DashboardOverview['finance']> => {
+    const [revenueYtd, openInvoices, trend] = await Promise.all([
       prisma.invoice.aggregate({
         where: { status: { in: [...REVENUE_STATUSES] }, createdAt: { gte: yearStart } },
         _sum: { total: true },
       }),
-      prisma.employee.count({ where: { isArchived: false, status: { in: ['ACTIVE', 'ONBOARDING'] } } }),
       prisma.invoice.aggregate({ where: { status: { in: ['SENT', 'OVERDUE'] } }, _sum: { total: true }, _count: true }),
-      prisma.stockLevel.findMany({ select: { quantity: true, product: { select: { sku: true, reorderLevel: true, isActive: true } } } }),
-      prisma.lead.aggregate({ where: { stage: { notIn: ['WON', 'LOST'] } }, _sum: { value: true }, _count: true }),
-      prisma.payrollRun.findFirst({ orderBy: { periodStart: 'desc' } }),
       monthlySeries(monthStart(now, -5), monthStart(now, 1)),
+    ]);
+    return {
+      revenueYtd: new Decimal(revenueYtd._sum.total ?? 0).toFixed(2),
+      openInvoices: { count: openInvoices._count, total: new Decimal(openInvoices._sum.total ?? 0).toFixed(2) },
+      trend,
+    };
+  };
+
+  const people = async (): Promise<DashboardOverview['people']> => {
+    const [activeEmployees, departments, unassigned] = await Promise.all([
+      prisma.employee.count({ where: { isArchived: false, status: { in: ['ACTIVE', 'ONBOARDING'] } } }),
       prisma.department.findMany({
         select: { name: true, _count: { select: { employees: { where: { isArchived: false } } } } },
       }),
       prisma.employee.count({ where: { isArchived: false, departmentId: null } }),
     ]);
+    const headcountByDepartment = departments
+      .map((d) => ({ department: d.name, count: d._count.employees }))
+      .filter((d) => d.count > 0);
+    if (unassigned > 0) headcountByDepartment.push({ department: 'Unassigned', count: unassigned });
+    return { activeEmployees, headcountByDepartment };
+  };
 
-  // A SKU is low when its total stock across warehouses is at or below the reorder level.
-  const stockBySku = new Map<string, { qty: number; reorder: number }>();
-  for (const l of levels) {
-    if (!l.product.isActive) continue;
-    const cur = stockBySku.get(l.product.sku) ?? { qty: 0, reorder: l.product.reorderLevel };
-    cur.qty += l.quantity;
-    stockBySku.set(l.product.sku, cur);
-  }
-  const lowSkus = [...stockBySku].filter(([, v]) => v.qty <= v.reorder).map(([sku]) => sku).sort();
+  const payroll = async (): Promise<DashboardOverview['payroll']> => {
+    const latestRun = await prisma.payrollRun.findFirst({ orderBy: { periodStart: 'desc' } });
+    return {
+      latest: latestRun
+        ? { period: monthKey(latestRun.periodStart), totalNet: latestRun.totalNet.toFixed(2), status: latestRun.status }
+        : null,
+    };
+  };
 
-  const headcountByDepartment = departments
-    .map((d) => ({ department: d.name, count: d._count.employees }))
-    .filter((d) => d.count > 0);
-  if (unassigned > 0) headcountByDepartment.push({ department: 'Unassigned', count: unassigned });
+  const inventory = async (): Promise<DashboardOverview['inventory']> => {
+    const levels = await prisma.stockLevel.findMany({
+      select: { quantity: true, product: { select: { sku: true, reorderLevel: true, isActive: true } } },
+    });
+    // A SKU is low when its total stock across warehouses is at or below the reorder level.
+    const stockBySku = new Map<string, { qty: number; reorder: number }>();
+    for (const l of levels) {
+      if (!l.product.isActive) continue;
+      const cur = stockBySku.get(l.product.sku) ?? { qty: 0, reorder: l.product.reorderLevel };
+      cur.qty += l.quantity;
+      stockBySku.set(l.product.sku, cur);
+    }
+    const lowSkus = [...stockBySku].filter(([, v]) => v.qty <= v.reorder).map(([sku]) => sku).sort();
+    return { lowStock: { count: lowSkus.length, skus: lowSkus.slice(0, 10) } };
+  };
 
-  let recentActivity: DashboardOverview['recentActivity'] = null;
-  if (hasRole(req, ROLES.ADMIN)) {
+  const sales = async (): Promise<DashboardOverview['sales']> => {
+    const pipeline = await prisma.lead.aggregate({ where: { stage: { notIn: ['WON', 'LOST'] } }, _sum: { value: true }, _count: true });
+    return { pipeline: { count: pipeline._count, value: new Decimal(pipeline._sum.value ?? 0).toFixed(2) } };
+  };
+
+  const me = async (): Promise<DashboardOverview['me']> => {
+    const employee = await prisma.employee.findUnique({ where: { userId: req.user!.userId }, select: { id: true, name: true } });
+    if (!employee) return null;
+    const [pendingLeave, openShift, payslip] = await Promise.all([
+      prisma.leaveRequest.count({ where: { employeeId: employee.id, status: 'PENDING' } }),
+      prisma.attendance.findFirst({ where: { employeeId: employee.id, clockOut: null }, select: { id: true } }),
+      prisma.payslip.findFirst({
+        where: { employeeId: employee.id },
+        orderBy: { payrollRun: { periodStart: 'desc' } },
+        select: { net: true, payrollRun: { select: { periodStart: true } } },
+      }),
+    ]);
+    return {
+      employeeName: employee.name,
+      pendingLeave,
+      clockedIn: !!openShift,
+      latestPayslip: payslip ? { period: monthKey(payslip.payrollRun.periodStart), net: payslip.net.toFixed(2) } : null,
+    };
+  };
+
+  const activity = async (): Promise<DashboardOverview['recentActivity']> => {
     const logs = await prisma.auditLog.findMany({
       orderBy: { timestamp: 'desc' },
       take: 8,
       include: { user: { select: { email: true } } },
     });
-    recentActivity = logs.map((l) => ({
+    return logs.map((l) => ({
       id: l.id, action: l.action, entity: l.entity, user: l.user.email, timestamp: l.timestamp.toISOString(),
     }));
-  }
-
-  const data: DashboardOverview = {
-    revenueYtd: new Decimal(revenueYtd._sum.total ?? 0).toFixed(2),
-    activeEmployees,
-    openInvoices: { count: openInvoices._count, total: new Decimal(openInvoices._sum.total ?? 0).toFixed(2) },
-    lowStock: { count: lowSkus.length, skus: lowSkus.slice(0, 10) },
-    pipeline: { count: pipeline._count, value: new Decimal(pipeline._sum.value ?? 0).toFixed(2) },
-    latestPayroll: latestRun
-      ? { period: monthKey(latestRun.periodStart), totalNet: latestRun.totalNet.toFixed(2), status: latestRun.status }
-      : null,
-    trend,
-    headcountByDepartment,
-    recentActivity,
   };
+
+  const [f, p, pr, inv, s, m, a] = await Promise.all([
+    can(READ.FINANCE) ? finance() : null,
+    can(READ.PEOPLE) ? people() : null,
+    can(READ.PAYROLL) ? payroll() : null,
+    can(READ.INVENTORY) ? inventory() : null,
+    can(READ.LEADS) ? sales() : null,
+    me(),
+    can(READ.ADMIN) ? activity() : null,
+  ]);
+  const data: DashboardOverview = { finance: f, people: p, payroll: pr, inventory: inv, sales: s, me: m, recentActivity: a };
   return ok(res, data, 'Overview retrieved');
 });

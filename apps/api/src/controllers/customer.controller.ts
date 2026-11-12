@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
+import { READ, hasRole } from '../middleware/roles';
 import { ok, created, listQuery, paging, buildMeta } from '../utils/response';
 import { endpoint, idParams } from '../middleware/validate';
 import { notFound } from '../utils/httpError';
@@ -32,10 +33,12 @@ export const listCustomers = endpoint({ query: listSchema }, async ({ query }, _
   return ok(res, customers, 'Customers retrieved', buildMeta(query.page, query.limit, total));
 });
 
-export const getCustomer = endpoint({ params: idParams }, async ({ params }, _req, res) => {
+export const getCustomer = endpoint({ params: idParams }, async ({ params }, req, res) => {
+  // Finance reads customers for invoicing but not the sales pipeline or call notes
+  const withSales = hasRole(req, READ.LEADS);
   const customer = await prisma.customer.findUnique({
     where: { id: params.id },
-    include: { leads: true, interactions: { orderBy: { createdAt: 'desc' }, take: 10 } },
+    include: withSales ? { leads: true, interactions: { orderBy: { createdAt: 'desc' }, take: 10 } } : undefined,
   });
   if (!customer) throw notFound('Customer');
   return ok(res, customer);
