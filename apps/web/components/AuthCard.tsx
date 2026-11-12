@@ -11,7 +11,7 @@ export function AuthCard({ title, description, children, footer }: {
 }) {
   return (
     <main className="relative flex min-h-dvh flex-col items-center justify-center px-4 py-10">
-      <ThemeToggle className="absolute right-4 top-4" />
+      <div className="absolute right-4 top-4"><ThemeToggle /></div>
       <div className="w-full max-w-sm">
         <Logo size="lg" className="justify-center" />
         <div className="mt-8 rounded-2xl border border-line bg-surface p-6 shadow-sm sm:p-8">

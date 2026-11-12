@@ -322,9 +322,9 @@ async function main() {
   // Leave, attendance, notifications
   await prisma.leaveRequest.createMany({
     data: [
-      { employeeId: employees['employee@amdox.com']!, type: 'ANNUAL', fromDate: daysAgo(-10), toDate: daysAgo(-7), reason: 'Family trip', status: 'PENDING' },
+      { employeeId: employees['employee@amdox.com']!, type: 'ANNUAL', fromDate: daysAgo(-7), toDate: daysAgo(-10), reason: 'Family trip', status: 'PENDING' },
       { employeeId: employees['bob@amdox.com']!, type: 'SICK', fromDate: daysAgo(12), toDate: daysAgo(11), status: 'APPROVED', approvedBy: users['hr@amdox.com'] },
-      { employeeId: employees['sales@amdox.com']!, type: 'ANNUAL', fromDate: daysAgo(-20), toDate: daysAgo(-16), status: 'PENDING' },
+      { employeeId: employees['sales@amdox.com']!, type: 'ANNUAL', fromDate: daysAgo(-16), toDate: daysAgo(-20), status: 'PENDING' },
     ],
   });
   const attendance: Prisma.AttendanceCreateManyInput[] = [];

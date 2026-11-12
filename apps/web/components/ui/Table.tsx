@@ -27,6 +27,8 @@ export interface Column<T> {
   primary?: boolean;
   /** Hidden in the phone card layout */
   hideOnMobile?: boolean;
+  /** Hidden in the table below this breakpoint (low-priority, wide columns) */
+  hideBelow?: 'lg' | 'xl';
   /** Label in the phone card layout (defaults to header) */
   mobileLabel?: string;
   className?: string;
@@ -77,6 +79,7 @@ export function DataTable<T>({
     if (controlled) onSortChange!(next);
     else setLocalSort(next);
   };
+  const hideClass = (c: Column<T>) => (c.hideBelow === 'lg' ? 'hidden lg:table-cell' : c.hideBelow === 'xl' ? 'hidden xl:table-cell' : undefined);
   const alignOf = (c: Column<T>) => c.align ?? (c.numeric ? 'right' : 'left');
   const alignClass = { left: 'text-left', right: 'text-right', center: 'text-center' };
 
@@ -86,7 +89,7 @@ export function DataTable<T>({
   return (
     <>
       {/* Desktop / tablet table */}
-      <div className="hidden overflow-x-auto md:block">
+      <div className="relative hidden overflow-x-auto md:block">
         <table className="w-full border-collapse text-sm">
           <caption className="sr-only">{caption}</caption>
           <thead>
@@ -100,7 +103,7 @@ export function DataTable<T>({
                     key={c.key}
                     scope="col"
                     aria-sort={ariaSort}
-                    className={cx('whitespace-nowrap px-4 py-2.5 text-xs font-medium text-fg-muted first:pl-5 last:pr-5', alignClass[alignOf(c)], c.headerClassName)}
+                    className={cx('whitespace-nowrap px-4 py-2.5 text-xs font-medium text-fg-muted first:pl-5 last:pr-5', alignClass[alignOf(c)], hideClass(c), c.headerClassName)}
                   >
                     {sortable(c) ? (
                       <button
@@ -138,6 +141,7 @@ export function DataTable<T>({
                         'px-4 py-3 align-middle text-fg first:pl-5 last:pr-5',
                         alignClass[alignOf(c)],
                         c.numeric && 'whitespace-nowrap tabular-nums',
+                        hideClass(c),
                         c.className,
                       )}
                     >

@@ -59,7 +59,7 @@ function LedgerTab() {
     { key: 'date', header: 'Date', cell: (e) => date(e.date), sortKey: 'date', className: 'whitespace-nowrap' },
     { key: 'description', header: 'Description', primary: true, cell: (e) => <span className="font-medium">{e.description}</span> },
     {
-      key: 'lines', header: 'Lines', hideOnMobile: true,
+      key: 'lines', header: 'Lines', hideOnMobile: true, hideBelow: 'xl',
       cell: (e) => (
         <ul className="space-y-0.5 text-xs text-fg-muted">
           {e.lines.map((l) => (

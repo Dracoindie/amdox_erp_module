@@ -235,9 +235,9 @@ function ContactsTab() {
     {
       key: 'contact', header: 'Contact',
       cell: (c) => (
-        <span className="space-y-0.5 text-sm">
-          {c.email && <a href={`mailto:${c.email}`} className="flex items-center gap-1.5 text-fg hover:underline"><Mail className="h-3.5 w-3.5 text-fg-subtle" aria-hidden /> {c.email}</a>}
-          {c.phone && <a href={`tel:${c.phone}`} className="flex items-center gap-1.5 text-fg hover:underline"><Phone className="h-3.5 w-3.5 text-fg-subtle" aria-hidden /> {c.phone}</a>}
+        <span className="block min-w-0 space-y-0.5 text-sm">
+          {c.email && <a href={`mailto:${c.email}`} className="flex min-w-0 items-center gap-1.5 text-fg hover:underline"><Mail className="h-3.5 w-3.5 shrink-0 text-fg-subtle" aria-hidden /> <span className="truncate">{c.email}</span></a>}
+          {c.phone && <a href={`tel:${c.phone}`} className="flex min-w-0 items-center gap-1.5 text-fg hover:underline"><Phone className="h-3.5 w-3.5 shrink-0 text-fg-subtle" aria-hidden /> <span className="truncate">{c.phone}</span></a>}
           {!c.email && !c.phone && '—'}
         </span>
       ),

@@ -185,7 +185,7 @@ function LeaveTab() {
   const columns: Column<LeaveRequest>[] = [
     { key: 'employee', header: 'Employee', primary: true, cell: (l) => <Person name={l.employee.name} sub={titleCase(l.type)} /> },
     { key: 'dates', header: 'Dates', cell: (l) => <span className="whitespace-nowrap">{date(l.fromDate)} – {date(l.toDate)}</span> },
-    { key: 'days', header: 'Days', numeric: true, cell: (l) => days(l.fromDate, l.toDate) },
+    { key: 'days', header: 'Days', numeric: true, cell: (l) => { const d = days(l.fromDate, l.toDate); return d > 0 ? d : <span title="End date is before start date" className="text-warning">—</span>; } },
     { key: 'reason', header: 'Reason', cell: (l) => <span className="text-fg-muted">{l.reason ?? '—'}</span> },
     { key: 'status', header: 'Status', cell: (l) => <Badge>{l.status}</Badge> },
     ...(isHr ? [{
