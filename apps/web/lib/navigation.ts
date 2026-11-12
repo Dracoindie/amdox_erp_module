@@ -1,5 +1,6 @@
 import { BarChart3, LayoutDashboard, Package, Settings, UserRound, Users, Wallet, type LucideIcon } from 'lucide-react';
 import type { AuthUser } from '@repo/types';
+import { MODULE_ACCESS } from './permissions';
 
 export interface NavItem {
   href: string;
@@ -10,8 +11,8 @@ export interface NavItem {
   visible?: (user: AuthUser) => boolean;
 }
 
-// Every signed-in role may read every module (API: GET routes only require auth),
-// so all modules are listed; tabs a role cannot use are hidden inside each page.
+// Modules are listed only for roles that may read them (lib/permissions.ts,
+// mirroring the API). Tabs a role cannot read are hidden inside each page.
 export const NAV: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, description: 'Key figures and recent activity' },
   { href: '/finance', label: 'Finance', icon: Wallet, description: 'Ledger, invoices, expenses, budgets' },
@@ -20,7 +21,13 @@ export const NAV: NavItem[] = [
   { href: '/crm', label: 'CRM & Sales', icon: UserRound, description: 'Pipeline, customers, sales orders' },
   { href: '/bi', label: 'Analytics', icon: BarChart3, description: 'Trends and exportable reports' },
   { href: '/settings', label: 'Settings', icon: Settings, description: 'Account, users, audit log, system' },
-];
+].map((n) => ({ ...n, visible: MODULE_ACCESS[n.href] }));
+
+/** May this user open the module that owns `pathname`? */
+export function canOpen(user: AuthUser, pathname: string) {
+  const nav = currentNav(pathname);
+  return !nav?.visible || nav.visible(user);
+}
 
 export function isActive(pathname: string, href: string) {
   return href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`);

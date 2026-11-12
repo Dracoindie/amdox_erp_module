@@ -11,22 +11,24 @@ import api, { apiErrorMessage } from '../../../lib/axios';
 import { useApi, useMutation } from '../../../lib/useApi';
 import { useAuthUser } from '../../../lib/useAuth';
 import { useDebounced } from '../../../lib/useDebounced';
-import { can } from '../../../lib/permissions';
+import { can, canRead } from '../../../lib/permissions';
 import { CURRENCY_SYMBOL, date, money, moneyCompact, titleCase, todayISO, toNumber } from '../../../lib/format';
 import {
   Badge, Button, Card, DataState, DataTable, Field, Form, FormActions, Input, Modal, PageHeader, Pagination, SearchInput,
   Select, Skeleton, TabPanel, Tabs, Textarea, cx, useConfirm, useTabParam, useToast, type Column,
 } from '../../../components/ui';
 
-const TABS = [
-  { id: 'pipeline', label: 'Pipeline', icon: Kanban },
-  { id: 'contacts', label: 'Customers', icon: Users },
-  { id: 'orders', label: 'Sales orders', icon: Briefcase },
-] as const;
+
 
 const STAGES: LeadStage[] = ['PROSPECT', 'QUALIFIED', 'PROPOSAL', 'NEGOTIATION', 'WON', 'LOST'];
 
 export default function CRMPage() {
+  const user = useAuthUser();
+  const TABS = [
+    { id: 'pipeline', label: 'Pipeline', icon: Kanban, hidden: !canRead(user, 'LEADS') },
+    { id: 'contacts', label: 'Customers', icon: Users, hidden: !canRead(user, 'CUSTOMERS') },
+    { id: 'orders', label: 'Sales orders', icon: Briefcase, hidden: !canRead(user, 'SALES_ORDERS') },
+  ] as const;
   const [tab, setTab] = useTabParam(TABS);
   return (
     <div className="space-y-6">

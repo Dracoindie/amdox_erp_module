@@ -2,12 +2,15 @@
 
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { RefreshCw, WifiOff } from 'lucide-react';
+import { Lock, RefreshCw, WifiOff } from 'lucide-react';
+import Link from 'next/link';
 import { Header } from './components/Header';
 import { MobileNav, Sidebar } from './components/Sidebar';
 import { restoreSession } from '../../lib/auth';
+import { useAuthUser } from '../../lib/useAuth';
+import { canOpen } from '../../lib/navigation';
 import { Logo } from '../../components/Logo';
-import { Button, Skeleton } from '../../components/ui';
+import { Button, Card, EmptyState, Skeleton } from '../../components/ui';
 
 type Status = 'checking' | 'ok' | 'unavailable';
 
@@ -50,12 +53,30 @@ function Unavailable({ onRetry, retrying }: { onRetry: () => void; retrying: boo
   );
 }
 
+/** 403 page for modules the signed-in role cannot read (direct links, bookmarks). */
+function NoAccess() {
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-semibold tracking-tight text-fg">No access</h1>
+      <Card>
+        <EmptyState
+          icon={Lock}
+          title="Your role can't open this section"
+          description="If you need it for your work, ask an administrator to change your role."
+          action={<Link href="/" className="inline-flex h-10 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-fg hover:bg-primary-hover sm:h-9">Back to the dashboard</Link>}
+        />
+      </Card>
+    </div>
+  );
+}
+
 export default function DashboardLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const router = useRouter();
   const pathname = usePathname();
   const [status, setStatus] = useState<Status>('checking');
   const [retrying, setRetrying] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const user = useAuthUser();
 
   // Guard: the session must be confirmed by the API (/auth/me), not just by the
   // presence of a token. An unreachable API is reported, not treated as sign-out.
@@ -101,7 +122,7 @@ export default function DashboardLayout({ children }: Readonly<{ children: React
           <Header onMenu={() => setNavOpen(true)} />
         </Suspense>
         <main id="main" tabIndex={-1} className="mx-auto max-w-7xl px-4 pb-16 pt-6 focus:outline-none sm:px-6 lg:px-8">
-          <Suspense fallback={<Skeleton className="h-72 rounded-xl" />}>{children}</Suspense>
+          <Suspense fallback={<Skeleton className="h-72 rounded-xl" />}>{user && !canOpen(user, pathname) ? <NoAccess /> : children}</Suspense>
         </main>
       </div>
     </div>

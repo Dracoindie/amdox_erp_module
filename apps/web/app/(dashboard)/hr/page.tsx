@@ -1,16 +1,16 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Clock, CreditCard, FileText, LogIn, LogOut, Network, UserPlus, Users } from 'lucide-react';
+import { Clock, CreditCard, FileText, IdCard, LogIn, LogOut, Network, UserPlus, Users } from 'lucide-react';
 import type { Attendance, Employee, LeaveRequest, LeaveType, Payslip, PayrollRun, PayrollRunDetail } from '@repo/types';
 import api from '../../../lib/axios';
 import { useApi, useMutation } from '../../../lib/useApi';
 import { useAuthUser } from '../../../lib/useAuth';
 import { useDebounced } from '../../../lib/useDebounced';
-import { can } from '../../../lib/permissions';
+import { can, canRead, hasSelfService } from '../../../lib/permissions';
 import { CURRENCY_SYMBOL, date, dec, initials, money, monthLabel, time, titleCase, todayISO, toNumber } from '../../../lib/format';
 import {
-  Alert, Badge, Button, Card, DataState, DataTable, Field, Form, FormActions, Input, Modal, PageHeader,
+  Alert, Badge, Button, Card, DataState, DataTable, DescriptionList, Field, Form, FormActions, Input, Modal, PageHeader,
   Pagination, SearchInput, Select, Skeleton, TabPanel, Tabs, Textarea, cx, useConfirm, useTabParam,
   type Column, type SortState,
 } from '../../../components/ui';
@@ -22,14 +22,18 @@ const round2 = (v: number) => Math.round(v * 100) / 100;
 
 export default function HRPage() {
   const user = useAuthUser();
-  const linked = !!user?.employee;
+  const directory = canRead(user, 'PEOPLE');
+  const self = hasSelfService(user);
+  const records = canRead(user, 'PEOPLE_RECORDS');
+  const payroll = canRead(user, 'PAYROLL');
+  // Tabs follow read access (lib/permissions.ts); self-service needs a linked employee record
   const tabs = [
-    { id: 'directory', label: 'Directory', icon: Users },
-    // Leave / attendance are self-service: hidden for accounts with no employee record unless HR
-    { id: 'leave', label: 'Leave', icon: FileText, hidden: !linked && !can(user, 'HR') },
-    { id: 'attendance', label: 'Attendance', icon: Clock, hidden: !linked && !can(user, 'HR') },
-    { id: 'payroll', label: can(user, 'PAYROLL_VIEW') ? 'Payroll' : 'My payslips', icon: CreditCard, hidden: !can(user, 'PAYROLL_VIEW') && !(linked && can(user, 'STAFF')) },
-    { id: 'org', label: 'Org chart', icon: Network },
+    { id: 'directory', label: 'Directory', icon: Users, hidden: !directory },
+    { id: 'profile', label: 'My profile', icon: IdCard, hidden: directory || !user?.employee },
+    { id: 'leave', label: records ? 'Leave' : 'My leave', icon: FileText, hidden: !records && !self },
+    { id: 'attendance', label: records ? 'Attendance' : 'My attendance', icon: Clock, hidden: !records && !self },
+    { id: 'payroll', label: payroll ? 'Payroll' : 'My payslips', icon: CreditCard, hidden: !payroll && !self },
+    { id: 'org', label: 'Org chart', icon: Network, hidden: !directory },
   ] as const;
   const [tab, setTab] = useTabParam(tabs);
   return (
@@ -38,9 +42,10 @@ export default function HRPage() {
       <Tabs tabs={tabs} active={tab} onChange={setTab} label="HR sections" />
       <TabPanel id={tab}>
         {tab === 'directory' && <DirectoryTab />}
+        {tab === 'profile' && <ProfileTab />}
         {tab === 'leave' && <LeaveTab />}
         {tab === 'attendance' && <AttendanceTab />}
-        {tab === 'payroll' && (can(user, 'PAYROLL_VIEW') ? <PayrollAdmin /> : <MyPayslips />)}
+        {tab === 'payroll' && (payroll ? <PayrollAdmin /> : <MyPayslips />)}
         {tab === 'org' && <OrgTab />}
       </TabPanel>
     </div>
@@ -70,7 +75,7 @@ function DirectoryTab() {
   const q = useDebounced(search);
   const params = new URLSearchParams({ page: String(page), limit: '20', sort: sort.key, order: sort.order, ...(q && { search: q }) });
   const employees = useApi<Employee[]>(`/employees?${params}`);
-  const showSalary = can(user, 'PAYROLL_VIEW');
+  const showSalary = canRead(user, 'PAYROLL');
   const isHr = can(user, 'HR');
 
   const columns: Column<Employee>[] = [
@@ -163,6 +168,32 @@ function EmployeeForm({ onDone, onCancel }: { onDone: () => void; onCancel: () =
   );
 }
 
+// ── My profile (employees without directory access) ───────────────────────────
+
+function ProfileTab() {
+  const user = useAuthUser();
+  const profile = useApi<Employee>(user?.employee ? `/employees/${user.employee.id}` : null);
+  return (
+    <Card title="My profile" description="Ask HR if any of these details are wrong.">
+      <DataState state={profile} isEmpty={() => false} skeleton={<div className="space-y-3">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-6" />)}</div>}>
+        {(e) => (
+          <DescriptionList
+            items={[
+              { label: 'Name', value: e.name },
+              { label: 'Work email', value: e.email },
+              { label: 'Job title', value: e.designation ?? '—' },
+              { label: 'Department', value: e.department?.name ?? 'Unassigned' },
+              { label: 'Start date', value: date(e.joinDate) },
+              { label: 'Status', value: <Badge>{e.status}</Badge> },
+              ...(e.grossSalary ? [{ label: 'Annual salary (CTC)', value: <span className="tabular-nums">{money(e.grossSalary)}</span> }] : []),
+            ]}
+          />
+        )}
+      </DataState>
+    </Card>
+  );
+}
+
 // ── Leave ─────────────────────────────────────────────────────────────────────
 
 const LEAVE_TYPES: LeaveType[] = ['ANNUAL', 'SICK', 'UNPAID', 'MATERNITY', 'PATERNITY'];
@@ -176,6 +207,7 @@ function LeaveTab() {
   const [status, setStatus] = useState('');
   const leaves = useApi<LeaveRequest[]>(`/leave-requests${status ? `?status=${status}` : ''}`);
   const isHr = can(user, 'HR');
+  const allRecords = canRead(user, 'PEOPLE_RECORDS');
   const decide = useMutation(async (l: LeaveRequest, action: 'approve' | 'reject') => {
     await api.patch(`/leave-requests/${l.id}/${action}`, {});
     leaves.reload();
@@ -184,9 +216,20 @@ function LeaveTab() {
 
   const columns: Column<LeaveRequest>[] = [
     { key: 'employee', header: 'Employee', primary: true, cell: (l) => <Person name={l.employee.name} sub={titleCase(l.type)} /> },
-    { key: 'dates', header: 'Dates', cell: (l) => <span className="whitespace-nowrap">{date(l.fromDate)} – {date(l.toDate)}</span> },
-    { key: 'days', header: 'Days', numeric: true, cell: (l) => { const d = days(l.fromDate, l.toDate); return d > 0 ? d : <span title="End date is before start date" className="text-warning">—</span>; } },
-    { key: 'reason', header: 'Reason', cell: (l) => <span className="text-fg-muted">{l.reason ?? '—'}</span> },
+    {
+      key: 'dates', header: 'Dates',
+      cell: (l) => {
+        const d = days(l.fromDate, l.toDate);
+        return (
+          <>
+            <span className="block whitespace-nowrap">{date(l.fromDate)} – {date(l.toDate)}</span>
+            <span className="block text-xs text-fg-subtle">{d > 0 ? `${d} day${d === 1 ? '' : 's'}` : 'End date is before start date'}</span>
+          </>
+        );
+      },
+    },
+    // Reason only on wide screens so the approve/reject actions fit on tablets
+    { key: 'reason', header: 'Reason', hideBelow: 'xl', cell: (l) => <span className="text-fg-muted">{l.reason ?? '—'}</span> },
     { key: 'status', header: 'Status', cell: (l) => <Badge>{l.status}</Badge> },
     ...(isHr ? [{
       key: 'actions', header: <span className="sr-only">Actions</span>, align: 'right' as const, mobileLabel: '',
@@ -202,9 +245,9 @@ function LeaveTab() {
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
       <Card
-        title={isHr ? 'Leave requests' : 'My leave requests'}
+        title={allRecords ? 'Leave requests' : 'My leave requests'}
         flush
-        className={user?.employee ? 'xl:col-span-2' : 'xl:col-span-3'}
+        className={hasSelfService(user) ? 'xl:col-span-2' : 'xl:col-span-3'}
         actions={
           <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full sm:w-40" aria-label="Filter by status">
             <option value="">All statuses</option>
@@ -218,7 +261,7 @@ function LeaveTab() {
           {(rows) => <DataTable caption="Leave requests" columns={columns} rows={rows} rowKey={(l) => l.id} />}
         </DataState>
       </Card>
-      {user?.employee && can(user, 'STAFF') && <LeaveForm onSaved={leaves.reload} />}
+      {hasSelfService(user) && <LeaveForm onSaved={leaves.reload} />}
     </div>
   );
 }
@@ -258,8 +301,8 @@ function LeaveForm({ onSaved }: { onSaved: () => void }) {
 
 function AttendanceTab() {
   const user = useAuthUser();
-  const isHr = can(user, 'HR');
-  const history = useApi<Attendance[]>(user?.employee || isHr ? '/attendance/history?limit=50' : null);
+  const allRecords = canRead(user, 'PEOPLE_RECORDS');
+  const history = useApi<Attendance[]>(user?.employee || allRecords ? '/attendance/history?limit=50' : null);
   const clock = useMutation(async (action: 'clock-in' | 'clock-out') => {
     await api.post(`/attendance/${action}`, {});
     history.reload();
@@ -277,7 +320,7 @@ function AttendanceTab() {
 
   return (
     <div className="space-y-6">
-      {user?.employee && can(user, 'STAFF') && (
+      {hasSelfService(user) && (
         <Card>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
@@ -297,7 +340,7 @@ function AttendanceTab() {
           </div>
         </Card>
       )}
-      <Card title={isHr ? 'Recent attendance · all employees' : 'My attendance'} flush>
+      <Card title={allRecords ? 'Recent attendance · all employees' : 'My attendance'} flush>
         <DataState state={history} empty={{ icon: Clock, title: 'No attendance records yet' }}>
           {(rows) => <DataTable caption="Attendance" columns={columns} rows={rows} rowKey={(a) => a.id} />}
         </DataState>

@@ -7,7 +7,7 @@ import api from '../../../lib/axios';
 import { useApi, useMutation } from '../../../lib/useApi';
 import { useAuthUser } from '../../../lib/useAuth';
 import { useDebounced } from '../../../lib/useDebounced';
-import { can } from '../../../lib/permissions';
+import { can, canRead } from '../../../lib/permissions';
 import { CURRENCY_SYMBOL, date, isCurrentMonth, money, monthLabel, titleCase, todayISO, toNumber } from '../../../lib/format';
 import {
   Alert, Badge, Button, Card, DataState, DataTable, EmptyState, Field, Form, FormActions, IconButton, Input, Modal,
@@ -15,15 +15,19 @@ import {
   type Column, type SortState,
 } from '../../../components/ui';
 
-const TABS = [
-  { id: 'ledger', label: 'General ledger', icon: BookOpen },
-  { id: 'invoices', label: 'Invoices', icon: FileText },
-  { id: 'expenses', label: 'Expenses', icon: Receipt },
-  { id: 'budget', label: 'Budgets', icon: PieChart },
-  { id: 'reports', label: 'Reports', icon: LineChart },
-] as const;
+
 
 export default function FinancePage() {
+  const user = useAuthUser();
+  const books = canRead(user, 'FINANCE');
+  // Non-finance staff only see their own expense claims
+  const TABS = [
+    { id: 'ledger', label: 'General ledger', icon: BookOpen, hidden: !books },
+    { id: 'invoices', label: 'Invoices', icon: FileText, hidden: !books },
+    { id: 'expenses', label: books ? 'Expenses' : 'My expenses', icon: Receipt, hidden: !canRead(user, 'EXPENSES') },
+    { id: 'budget', label: 'Budgets', icon: PieChart, hidden: !books },
+    { id: 'reports', label: 'Reports', icon: LineChart, hidden: !canRead(user, 'ANALYTICS') },
+  ] as const;
   const [tab, setTab] = useTabParam(TABS);
   return (
     <div className="space-y-6">
@@ -343,7 +347,8 @@ function ExpensesTab() {
   const [sort, setSort] = useState<SortState>({ key: 'createdAt', order: 'desc' });
   const expenses = useApi<Expense[]>(`/finance/expenses?${new URLSearchParams({ page: String(page), limit: '20', ...sortQuery(sort) })}`);
   const isFinance = can(user, 'FINANCE');
-  const canSubmit = can(user, 'STAFF');
+  const seesAll = canRead(user, 'FINANCE');
+  const canSubmit = can(user, 'EXPENSE_SUBMIT');
   const decide = useMutation(async (x: Expense, status: 'APPROVED' | 'REJECTED' | 'REIMBURSED') => {
     await api.patch(`/finance/expenses/${x.id}/status`, { status });
     expenses.reload();
@@ -376,7 +381,7 @@ function ExpensesTab() {
 
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-      <Card title={isFinance ? 'All expense claims' : 'My expense claims'} flush className={canSubmit ? 'xl:col-span-2' : 'xl:col-span-3'}>
+      <Card title={seesAll ? 'All expense claims' : 'My expense claims'} flush className={canSubmit ? 'xl:col-span-2' : 'xl:col-span-3'}>
         <DataState state={expenses} empty={{ icon: Receipt, title: 'No expense claims yet', description: canSubmit ? 'Submit a claim with the form.' : undefined }}>
           {(rows) => (
             <DataTable

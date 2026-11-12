@@ -6,7 +6,7 @@ import type { AuditLog, CreatedUser, Role, SystemHealth, User } from '@repo/type
 import api, { API_BASE } from '../../../lib/axios';
 import { useApi, useMutation } from '../../../lib/useApi';
 import { useAuthUser } from '../../../lib/useAuth';
-import { can } from '../../../lib/permissions';
+import { can, canRead } from '../../../lib/permissions';
 import { useTheme, type ThemePref } from '../../../lib/theme';
 import { CURRENCY, LOCALE, auditPhrase, date, dateTime, roleLabel, time } from '../../../lib/format';
 import {
@@ -20,7 +20,7 @@ const ROLE_OPTIONS: Role[] = ['SUPER_ADMIN', 'HR_MANAGER', 'FINANCE_MANAGER', 'I
 
 export default function SettingsPage() {
   const user = useAuthUser();
-  const admin = can(user, 'ADMIN');
+  const admin = canRead(user, 'ADMIN'); // admins, and READ_ONLY auditors (view only)
   // Admin-only sections are hidden for other roles instead of showing "no access"
   const tabs = [
     { id: 'general', label: 'General', icon: Settings2 },
@@ -103,6 +103,7 @@ function UsersTab() {
   const confirm = useConfirm();
   const [page, setPage] = useState(1);
   const users = useApi<User[]>(`/users?page=${page}&limit=20&sort=email&order=asc`);
+  const isAdmin = can(me, 'ADMIN'); // READ_ONLY sees the list without controls
   const update = useMutation(async (u: User, patch: { role?: Role; isActive?: boolean }) => {
     await api.patch(`/users/${u.id}`, patch);
     users.reload();
@@ -136,7 +137,7 @@ function UsersTab() {
     },
     {
       key: 'role', header: 'Role',
-      cell: (u) => u.id === me?.id ? <Badge tone="brand" dot={false}>{roleLabel(u.role)}</Badge> : (
+      cell: (u) => u.id === me?.id || !isAdmin ? <Badge tone="brand" dot={false}>{roleLabel(u.role)}</Badge> : (
         <Select aria-label={`Role of ${u.email}`} value={u.role} disabled={update.pending} onChange={(e) => void changeRole(u, e.target.value as Role)} className="w-48">
           {ROLE_OPTIONS.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
         </Select>
@@ -146,7 +147,7 @@ function UsersTab() {
     { key: 'created', header: 'Created', cell: (u) => date(u.createdAt), className: 'whitespace-nowrap' },
     {
       key: 'actions', header: <span className="sr-only">Actions</span>, align: 'right', mobileLabel: '',
-      cell: (u) => u.id === me?.id ? null : (
+      cell: (u) => u.id === me?.id || !isAdmin ? null : (
         <Button size="sm" variant={u.isActive ? 'ghost' : 'secondary'} disabled={update.pending} onClick={() => void toggle(u)}>
           {u.isActive ? 'Disable' : 'Enable'}
         </Button>
@@ -156,14 +157,14 @@ function UsersTab() {
 
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-      <Card title="Users" flush className="xl:col-span-2">
+      <Card title="Users" flush className={isAdmin ? 'xl:col-span-2' : 'xl:col-span-3'}>
         <DataState state={users} empty={{ icon: Users, title: 'No users' }}>
           {(rows) => (
             <DataTable caption="Users" columns={columns} rows={rows} rowKey={(u) => u.id} footer={<Pagination meta={users.meta} onPage={setPage} noun="users" />} />
           )}
         </DataState>
       </Card>
-      <CreateUserCard onCreated={users.reload} />
+      {isAdmin && <CreateUserCard onCreated={users.reload} />}
     </div>
   );
 }

@@ -7,7 +7,7 @@ import api from '../../../lib/axios';
 import { useApi, useMutation } from '../../../lib/useApi';
 import { useAuthUser } from '../../../lib/useAuth';
 import { useDebounced } from '../../../lib/useDebounced';
-import { can } from '../../../lib/permissions';
+import { can, canRead } from '../../../lib/permissions';
 import { CURRENCY_SYMBOL, date, money, num, titleCase } from '../../../lib/format';
 import { ChartLegend, LineTrend, SLOT } from '../../../components/charts';
 import {
@@ -21,9 +21,9 @@ const totalStock = (p: Product) => p.stockLevels.reduce((s, l) => s + l.quantity
 export default function SCMPage() {
   const user = useAuthUser();
   const tabs = [
-    { id: 'inventory', label: 'Inventory', icon: Package },
-    { id: 'orders', label: 'Purchase orders', icon: ShoppingCart },
-    { id: 'vendors', label: 'Vendors', icon: Truck },
+    { id: 'inventory', label: 'Inventory', icon: Package, hidden: !canRead(user, 'INVENTORY') },
+    { id: 'orders', label: 'Purchase orders', icon: ShoppingCart, hidden: !canRead(user, 'PURCHASING') },
+    { id: 'vendors', label: 'Vendors', icon: Truck, hidden: !canRead(user, 'PURCHASING') },
     // The forecast endpoint is restricted to inventory roles: hide rather than show a 403
     { id: 'ai', label: 'Demand forecast', icon: BrainCircuit, hidden: !can(user, 'INVENTORY') },
   ] as const;

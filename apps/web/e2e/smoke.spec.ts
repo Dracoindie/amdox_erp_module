@@ -6,6 +6,21 @@ import { expect, test, type Page } from '@playwright/test';
 
 const ROLES = ['admin', 'hr', 'finance', 'inventory', 'sales', 'employee', 'viewer'] as const;
 const PAGES = ['/', '/finance', '/hr', '/scm', '/crm', '/bi', '/settings'];
+const LABEL: Record<string, string> = {
+  '/': 'Dashboard', '/finance': 'Finance', '/hr': 'HR & Payroll', '/scm': 'Supply Chain',
+  '/crm': 'CRM & Sales', '/bi': 'Analytics', '/settings': 'Settings',
+};
+
+// Modules each seeded role may open (same matrix as the API's read access)
+const ACCESS: Record<(typeof ROLES)[number], string[]> = {
+  admin: PAGES,
+  hr: ['/', '/finance', '/hr', '/settings'], //                       finance = own expenses
+  finance: ['/', '/finance', '/hr', '/scm', '/crm', '/bi', '/settings'], // hr = directory/payroll, scm = purchasing, crm = customers/orders
+  inventory: ['/', '/finance', '/hr', '/scm', '/settings'], //        hr = self-service
+  sales: ['/', '/finance', '/hr', '/scm', '/crm', '/settings'], //    scm = stock levels
+  employee: ['/', '/hr', '/settings'],
+  viewer: PAGES,
+};
 const ADMIN_PW = process.env.ADMIN_PASSWORD || 'Admin@1234';
 const DEMO_PW = process.env.DEMO_PASSWORD || 'Demo@1234';
 
@@ -41,14 +56,25 @@ async function noOverflow(page: Page) {
 }
 
 for (const role of ROLES) {
-  test(`${role}: every page and tab renders without console errors`, async ({ page }) => {
+  test(`${role}: sees only its modules; every page and tab renders without console errors`, async ({ page }) => {
     const problems = watchConsole(page);
     await signIn(page, role);
+
+    // Sidebar lists exactly the modules this role may read
+    const nav = page.getByRole('navigation', { name: 'Main' });
+    const links = (await nav.getByRole('link').allInnerTexts()).map((t) => t.trim());
+    expect(links).toEqual(ACCESS[role].map((p) => LABEL[p]));
+
     for (const path of PAGES) {
       await page.goto(path);
       await settle(page);
+      if (!ACCESS[role].includes(path)) {
+        await expect(page.getByRole('heading', { level: 1, name: 'No access' })).toBeVisible();
+        continue;
+      }
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       await expect(page.getByText("Couldn't load this data")).toHaveCount(0);
+      await expect(page.getByText("You don't have access to this")).toHaveCount(0);
       await noOverflow(page);
 
       const tabs = page.getByRole('tab');
@@ -58,6 +84,7 @@ for (const role of ROLES) {
         await settle(page);
         await expect(tabs.nth(i)).toHaveAttribute('aria-selected', 'true');
         await expect(page.getByText("Couldn't load this data"), `error state on ${page.url()}`).toHaveCount(0);
+        await expect(page.getByText("You don't have access to this"), `403 state on ${page.url()}`).toHaveCount(0);
         await noOverflow(page);
       }
     }

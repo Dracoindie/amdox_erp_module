@@ -150,10 +150,15 @@ export const handlers = [
 
   http.get(`${A}/bi/overview`, () => {
     const data: DashboardOverview = {
-      revenueYtd: '985400.00', activeEmployees: employees.length, openInvoices: { count: 2, total: '40120.00' },
-      lowStock: { count: 2, skus: ['SKU-1002', 'SKU-1004'] }, pipeline: { count: 4, value: '170000.00' },
-      latestPayroll: { period: monthKey(1), totalNet: '30500.00', status: 'PAID' }, trend: biMonths(6),
-      headcountByDepartment: departments.map((d) => ({ department: d.name, count: employees.filter((e) => e.departmentId === d.id).length })),
+      finance: { revenueYtd: '985400.00', openInvoices: { count: 2, total: '40120.00' }, trend: biMonths(6) },
+      people: {
+        activeEmployees: employees.length,
+        headcountByDepartment: departments.map((d) => ({ department: d.name, count: employees.filter((e) => e.departmentId === d.id).length })),
+      },
+      payroll: { latest: { period: monthKey(1), totalNet: '30500.00', status: 'PAID' } },
+      inventory: { lowStock: { count: 2, skus: ['SKU-1002', 'SKU-1004'] } },
+      sales: { pipeline: { count: 4, value: '170000.00' } },
+      me: { employeeName: 'Demo Admin', pendingLeave: 0, clockedIn: false, latestPayslip: null },
       recentActivity: audit.map((a) => ({ id: a.id, action: a.action, entity: a.entity, user: a.user.email, timestamp: a.timestamp })),
     };
     return ok(data);
