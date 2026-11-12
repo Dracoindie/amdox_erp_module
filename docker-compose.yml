@@ -1,81 +1,95 @@
-# AMX-ERP-2026 — Local Development Stack
-# Usage: docker compose up -d
+# AMX-ERP-2026 — local stack
 #
-# Services:
-#   postgres  → port 5432 (main relational DB)
-#   redis     → port 6379 (session cache, rate limiting)
-#   api       → port 4000 (Node.js + Express backend)
-#   web       → port 3000 (Next.js frontend via pnpm dev)
+# Two ways to run (copy .env.example to .env first and fill in the secrets):
 #
-# Run migrations after first start:
-#   docker compose exec api pnpm db:migrate
-#   docker compose exec api pnpm db:seed
+#   1. Infra only, apps via `pnpm dev` on your machine (default):
+#        docker compose up -d                 # postgres :5432, ml-service :8000
+#
+#   2. Everything in containers:
+#        docker compose --profile app up -d --build
+#        docker compose --profile app run --rm api ./node_modules/.bin/tsx prisma/seed.ts   # optional demo data
+#
+#   Profile "app" adds api (:4000) and web (:3000). Don't run `pnpm dev` at the
+#   same time — both would use ports 3000/4000.
+#
+# Every port is bound to 127.0.0.1 so nothing is reachable from your network.
+
+name: amdox-erp
 
 services:
   postgres:
-    image: postgres:16-alpine
-    container_name: amx_postgres
+    image: postgres:16.4-alpine3.20
     restart: unless-stopped
     environment:
-      POSTGRES_USER: amdox
-      POSTGRES_PASSWORD: amdox_dev_password
-      POSTGRES_DB: amdox_erp
+      POSTGRES_USER: ${POSTGRES_USER:-amdox}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-amdox_erp}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U amdox -d amdox_erp"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
-
-  redis:
-    image: redis:7-alpine
-    container_name: amx_redis
-    restart: unless-stopped
-    command: redis-server --requirepass amdox_redis_password
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "amdox_redis_password", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  api:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
-    container_name: amx_api
-    restart: unless-stopped
-    ports:
-      - "4000:4000"
-    environment:
-      NODE_ENV: development
-      PORT: 4000
-      DATABASE_URL: postgresql://amdox:amdox_dev_password@postgres:5432/amdox_erp
-      REDIS_URL: redis://:amdox_redis_password@redis:6379
-      JWT_ACCESS_SECRET: dev-access-secret-replace-in-prod
-      JWT_REFRESH_SECRET: dev-refresh-secret-replace-in-prod
-      FRONTEND_URL: http://localhost:3000
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
 
   ml-service:
     build:
       context: apps/ml-service
-      dockerfile: Dockerfile
-    container_name: amx_ml_service
+    image: amdox-erp-suite/ml-service:0.2.0
+    restart: unless-stopped
+    environment:
+      ML_INTERNAL_TOKEN: ${ML_INTERNAL_TOKEN:?Set ML_INTERNAL_TOKEN in .env}
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  api:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: amdox-erp-suite/api:0.2.0
+    restart: unless-stopped
+    # Apply pending migrations, then start the server.
+    command: ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && exec node dist/server.js"]
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-amdox}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-amdox_erp}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set JWT_ACCESS_SECRET in .env}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      # Local http://localhost has no TLS, so the Secure cookie flag must be off here.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      ML_SERVICE_URL: http://ml-service:8000
+      ML_INTERNAL_TOKEN: ${ML_INTERNAL_TOKEN}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      SEED_DEMO_PASSWORD: ${SEED_DEMO_PASSWORD:-}
+    ports:
+      - "127.0.0.1:4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ml-service:
+        condition: service_started
+
+  web:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # The browser on your machine calls the API through the published port.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
+    image: amdox-erp-suite/web:0.2.0
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   postgres_data:
-  redis_data:

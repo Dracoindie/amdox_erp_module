@@ -1,0 +1,11 @@
+# kubectl apply -k k8s/
+# Create the amdox-erp-secrets Secret first (see secret.example.yaml).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - api.yaml
+  - ml.yaml
+  - frontend-deployment.yaml
+  - frontend-service.yaml

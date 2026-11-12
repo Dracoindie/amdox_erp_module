@@ -16,18 +16,16 @@
     "test:unit": "jest --selectProjects unit"
   },
   "dependencies": {
-    "@repo/types": "workspace:*",
     "@prisma/client": "^5.14.0",
+    "@repo/types": "workspace:*",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
     "express": "^5.3.0",
     "express-rate-limit": "^7.3.1",
     "helmet": "^7.1.0",
-    "ioredis": "^5.3.2",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
-    "uuid": "^10.0.0",
     "winston": "^3.13.0",
     "zod": "^3.23.8"
   },
@@ -43,7 +41,6 @@
     "@types/morgan": "^1.9.9",
     "@types/node": "^22.0.0",
     "@types/supertest": "^7.2.0",
-    "@types/uuid": "^10.0.0",
     "eslint": "^9.39.1",
     "jest": "^30.4.2",
     "jest-mock-extended": "^4.0.1",

@@ -113,3 +113,15 @@ def test_intermittent_demand_uses_recent_mean():
     pred = client.post("/api/v1/forecast/demand", json=body, headers=AUTH).json()["predictions"][0]
     assert pred["model"] == "moving_average"
     assert 7 <= pred["predictedDemand"] <= 13
+
+
+def test_prophet_failure_falls_back_to_simple_model(monkeypatch):
+    monkeypatch.setattr(main, "PROPHET_AVAILABLE", True)
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("stan backend missing")
+
+    monkeypatch.setattr(main, "fit_prophet", broken)
+    pred = client.post("/api/v1/forecast/demand", json={"items": [item(qty=3.0)]}, headers=AUTH).json()["predictions"][0]
+    assert pred["model"] == "holt"
+    assert pred["predictedDemand"] > 0

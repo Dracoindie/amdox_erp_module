@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amdox-erp-ml
+  namespace: amdox-production
+  labels: { app: amdox-erp-ml }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: amdox-erp-ml }
+  template:
+    metadata:
+      labels: { app: amdox-erp-ml }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: ml
+          image: amdox-erp-suite/ml-service:0.2.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 8000 }
+          env:
+            - name: ML_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef: { name: amdox-erp-secrets, key: ML_INTERNAL_TOKEN }
+            - { name: TMPDIR, value: /tmp }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: home, mountPath: /home/app }
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { cpu: "2", memory: 1536Mi }
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 20
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+      volumes:
+        - { name: tmp, emptyDir: {} }
+        - { name: home, emptyDir: {} }
+---
+# Internal only: the API reaches it; nothing outside the cluster does.
+apiVersion: v1
+kind: Service
+metadata:
+  name: amdox-erp-ml
+  namespace: amdox-production
+spec:
+  type: ClusterIP
+  selector: { app: amdox-erp-ml }
+  ports:
+    - { name: http, port: 8000, targetPort: http }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: amdox-erp-ml-from-api-only
+  namespace: amdox-production
+spec:
+  podSelector:
+    matchLabels: { app: amdox-erp-ml }
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: amdox-erp-api }
+      ports:
+        - { port: 8000 }

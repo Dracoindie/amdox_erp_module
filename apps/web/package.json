@@ -15,7 +15,6 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@repo/types": "workspace:*",
-    "@repo/ui": "workspace:*",
     "axios": "^1.16.0",
     "lucide-react": "^1.14.0",
     "next": "16.2.0",

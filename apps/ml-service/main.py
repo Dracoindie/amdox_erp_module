@@ -194,6 +194,26 @@ def fit_holt(y: np.ndarray, horizon: int, alpha: float = 0.3, beta: float = 0.1,
     return np.maximum(0.0, level + trend * damp)
 
 
+def fit_prophet(series: pd.Series, horizon: int) -> tuple[np.ndarray, float, str]:
+    m = Prophet(yearly_seasonality=False, weekly_seasonality=True, daily_seasonality=False, interval_width=0.8)
+    m.fit(pd.DataFrame({"ds": series.index, "y": series.to_numpy()}))
+    fc = m.predict(m.make_future_dataframe(periods=horizon, include_history=False))
+    preds = np.maximum(0.0, fc["yhat"].to_numpy())
+    total = max(1.0, float(preds.sum()))
+    spread = float((fc["yhat_upper"] - fc["yhat_lower"]).sum())
+    return preds, max(0.5, min(0.95, 1.0 - spread / (4 * total))), "prophet"
+
+
+def simple_model(y: np.ndarray, horizon: int, nonzero: int, active_share: float) -> tuple[np.ndarray, float, str]:
+    if nonzero >= 2 and active_share >= INTERMITTENT_THRESHOLD:
+        return fit_holt(y, horizon), 0.7, "holt"
+    if nonzero >= 2:
+        # Intermittent demand (mostly zero days): exponential smoothing decays
+        # toward zero between sales, so use the recent daily mean instead.
+        return np.full(horizon, float(y[-60:].mean())), 0.6, "moving_average"
+    return np.full(horizon, float(y[-30:].mean()) if len(y) else 0.0), 0.5, "moving_average"
+
+
 def forecast_item(item: ForecastItem, horizon: int, today: date) -> DemandPrediction:
     series = daily_series(item, today)
     y = series.to_numpy()
@@ -202,32 +222,14 @@ def forecast_item(item: ForecastItem, horizon: int, today: date) -> DemandPredic
     first_sale = int(np.argmax(y > 0)) if nonzero else len(y)
     active_share = nonzero / max(1, len(y) - first_sale)
 
-    model: str
-    preds: np.ndarray
-    confidence: float
-    if PROPHET_AVAILABLE and nonzero >= MIN_POINTS_PROPHET:
+    result = None
+    # Prophet only for regular demand; intermittent series go to the simple models.
+    if PROPHET_AVAILABLE and nonzero >= MIN_POINTS_PROPHET and active_share >= INTERMITTENT_THRESHOLD:
         try:
-            m = Prophet(yearly_seasonality=False, weekly_seasonality=True, daily_seasonality=False, interval_width=0.8)
-            m.fit(pd.DataFrame({"ds": series.index, "y": y}))
-            fc = m.predict(m.make_future_dataframe(periods=horizon, include_history=False))
-            preds = np.maximum(0.0, fc["yhat"].to_numpy())
-            total = max(1.0, float(preds.sum()))
-            spread = float((fc["yhat_upper"] - fc["yhat_lower"]).sum())
-            confidence = max(0.5, min(0.95, 1.0 - spread / (4 * total)))
-            model = "prophet"
+            result = fit_prophet(series, horizon)
         except Exception:  # noqa: BLE001 - fall back to a simpler model
-            log.exception("Prophet failed for %s; falling back to Holt", item.sku)
-            preds, confidence, model = fit_holt(y, horizon), 0.7, "holt"
-    elif nonzero >= 2 and active_share >= INTERMITTENT_THRESHOLD:
-        preds, confidence, model = fit_holt(y, horizon), 0.7, "holt"
-    elif nonzero >= 2:
-        # Intermittent demand (mostly zero days): exponential smoothing decays
-        # toward zero between sales, so use the recent daily mean instead.
-        avg = float(y[-60:].mean())
-        preds, confidence, model = np.full(horizon, avg), 0.6, "moving_average"
-    else:
-        avg = float(y[-30:].mean()) if len(y) else 0.0
-        preds, confidence, model = np.full(horizon, avg), 0.5, "moving_average"
+            log.exception("Prophet failed for %s; falling back to a simpler model", item.sku)
+    preds, confidence, model = result or simple_model(y, horizon, nonzero, active_share)
 
     predicted = int(round(float(preds.sum())))
 

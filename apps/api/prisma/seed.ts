@@ -38,8 +38,8 @@ async function main() {
   console.log('Seeding AMX-ERP-2026 demo data...');
 
   // ── Users (one per role) ────────────────────────────────────────────────────
-  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? 'Admin@1234';
-  const demoPassword = process.env.SEED_DEMO_PASSWORD ?? 'Demo@1234';
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD || 'Admin@1234';
+  const demoPassword = process.env.SEED_DEMO_PASSWORD || 'Demo@1234';
   const [adminHash, demoHash] = await Promise.all([bcrypt.hash(adminPassword, 12), bcrypt.hash(demoPassword, 12)]);
 
   const userSpecs: Array<[string, Role]> = [
