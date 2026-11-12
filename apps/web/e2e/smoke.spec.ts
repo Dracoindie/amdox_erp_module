@@ -62,8 +62,7 @@ for (const role of ROLES) {
 
     // Sidebar lists exactly the modules this role may read
     const nav = page.getByRole('navigation', { name: 'Main' });
-    const links = (await nav.getByRole('link').allInnerTexts()).map((t) => t.trim());
-    expect(links).toEqual(ACCESS[role].map((p) => LABEL[p]));
+    await expect(nav.getByRole('link')).toHaveText(ACCESS[role].map((p) => LABEL[p]!), { timeout: 20_000 });
 
     for (const path of PAGES) {
       await page.goto(path);

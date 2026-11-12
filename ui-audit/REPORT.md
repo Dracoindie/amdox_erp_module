@@ -231,3 +231,26 @@ The same capture was run against the rebuilt UI (`after/`, about 400 screenshots
 Found during the rebuild and fixed:
 - Two seeded leave requests had their start and end dates swapped, so the UI showed a negative number of days. The API already rejects this; only the seed was wrong.
 - Visually hidden table header labels escaped the scroll container and caused a 26 px page overflow.
+
+---
+
+# Follow-up: role-based read access, INR, tablet leave table
+
+Decisions applied (2026-11-12):
+
+- **Read access is enforced by the API** (`READ` in `apps/api/src/middleware/roles.ts`), and the UI follows it:
+  - EMPLOYEE sees only their own profile, attendance, leave and payslips.
+  - READ_ONLY reads everything and writes nothing.
+  - Other roles read the modules they write to, plus what they clearly need.
+  - The sidebar lists only modules the role can read; a direct link to any other module shows a "No access" page. Tabs are hidden per role.
+  - The dashboard is assembled from per-module sections, plus a personal "your day" panel.
+- **Currency:** INR with en-IN formatting (₹12,34,567.00; compact ₹12.3L / ₹1.2Cr). The seed and demo data are in rupees (salaries ₹4.2–25 lakh a year).
+- **Leave table at tablet width:** the day count sits under the dates and the reason column shows from `xl`, so Approve and Reject are visible without scrolling.
+
+Re-run results:
+- axe: 0 violations on 24 views.
+- Horizontal overflow: 0.
+- Console errors: 0 outside the deliberately provoked states.
+- Playwright: 10/10. Each role's sidebar matches its access, every visible tab loads without 403 or error states, and forbidden modules show "No access".
+
+Screenshots: `after/employee--dashboard--light--desktop.png`, `after/employee--hr--payroll--light--mobile.png`, `after/viewer--settings--users-roles--light--desktop.png`, `after/admin--hr--leave--light--tablet.png`.
