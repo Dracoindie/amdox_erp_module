@@ -74,17 +74,38 @@ The API sends the ml-service each SKU's real daily OUT quantities for the last 1
 
 ### Roles
 
+**Read access** (GET), enforced by the API (`READ` in `apps/api/src/middleware/roles.ts`) and mirrored in the UI, which hides modules and tabs a role can't read:
+
+| Data | SUPER_ADMIN | HR_MANAGER | FINANCE_MANAGER | INVENTORY_MANAGER | SALES_REP | EMPLOYEE | READ_ONLY |
+|---|---|---|---|---|---|---|---|
+| Employee directory, departments | ✓ | ✓ | ✓ (payroll) | | | own profile | ✓ |
+| Leave & attendance | all | all | own | own | own | own | all |
+| Payroll runs, salaries | ✓ | ✓ | ✓ | own payslips | own payslips | own payslips | ✓ |
+| Ledger, invoices, budgets, analytics | ✓ | | ✓ | | | | ✓ |
+| Expense claims | all | own | all | own | own | — | all |
+| Products & stock | ✓ | | | ✓ | ✓ (availability) | | ✓ |
+| Purchase orders, suppliers | ✓ | | ✓ (payables) | ✓ | | | ✓ |
+| Customers, sales orders | ✓ | | ✓ (invoicing; no leads or call notes) | | ✓ | | ✓ |
+| Leads / pipeline | ✓ | | | | ✓ | | ✓ |
+| Users, audit log, system health | ✓ | | | | | | ✓ (view only) |
+
+The dashboard (`/bi/overview`) returns only the sections the caller may read, plus the caller's own day (attendance, pending leave, latest payslip).
+
+**Write access:**
+
 | Action | Allowed roles |
 |---|---|
-| Read most modules | any signed-in user (salaries only for SUPER_ADMIN, HR, FINANCE) |
 | Employees, payroll runs, leave decisions | SUPER_ADMIN, HR_MANAGER |
 | Ledger, invoices, budgets, expense decisions | SUPER_ADMIN, FINANCE_MANAGER |
 | Products, stock movements, POs, suppliers, forecast | SUPER_ADMIN, INVENTORY_MANAGER |
 | Customers, leads, sales orders | SUPER_ADMIN, SALES_REP |
-| Clock in/out, file leave, submit expenses | every role except READ_ONLY — **for themselves only** (HR/admin may act for others) |
-| Users, audit log, system health | SUPER_ADMIN |
+| Clock in/out, file leave | every role except READ_ONLY, **for themselves only** (HR/admin may act for others) |
+| Submit expense claims | every role except EMPLOYEE and READ_ONLY |
+| Users | SUPER_ADMIN |
 
-The matrix lives in `apps/api/src/middleware/roles.ts` and is covered by an integration test that checks 36 restricted routes return 403.
+READ_ONLY never writes.
+
+The matrix lives in `apps/api/src/middleware/roles.ts`. Integration tests check the write restrictions, a 29-endpoint × 7-role read matrix (`readAccess.test.ts`) and READ_ONLY write refusals; the Playwright smoke test checks that each role's sidebar shows exactly its modules.
 
 ---
 
@@ -201,7 +222,8 @@ CI (`.github/workflows/ci.yml`) runs all of the above on Node 22 with a Postgres
 - **Single organisation.** Multi-tenancy (tenant isolation in the schema and queries) is planned, not implemented.
 - **No e-mail.** Forgot-password only logs the request; reset-password returns 501. New users get a one-time temporary password shown to the admin.
 - **Purchase orders have no line items**, so receiving a PO does not change stock — record an IN movement.
-- **Flat payroll rates** (20 % tax, 5 % insurance) for demonstration.
+- **Flat payroll rates** (20 % tax, 5 % insurance) for demonstration; real Indian payroll would need TDS slabs, PF, ESI and professional tax.
+- **Currency.** Amounts are stored without a currency column and shown as Indian rupees (`en-IN`); the demo data is in INR.
 - **Rate limits and the forecast cache are per process**; with several API replicas each enforces its own limit.
 - **Kubernetes manifests are untested templates** (see [Deployment](#deployment)).
 - Access tokens stay valid for up to 15 minutes after logout (refresh tokens are revoked immediately).

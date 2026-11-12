@@ -1,10 +1,11 @@
 // Display helpers. The API sends money as decimal strings; convert only here.
 //
-// Locale and currency come from the build environment so a deployment can show
-// e.g. ₹ with Indian digit grouping: NEXT_PUBLIC_LOCALE=en-IN NEXT_PUBLIC_CURRENCY=INR
+// Indian rupees with Indian digit grouping by default (₹12,34,567.00; compact
+// ₹12.3L / ₹1.2Cr). A deployment can override both at build time with
+// NEXT_PUBLIC_CURRENCY / NEXT_PUBLIC_LOCALE (e.g. USD / en-US).
 
-export const LOCALE = process.env.NEXT_PUBLIC_LOCALE || 'en-US';
-export const CURRENCY = process.env.NEXT_PUBLIC_CURRENCY || 'USD';
+export const LOCALE = process.env.NEXT_PUBLIC_LOCALE || 'en-IN';
+export const CURRENCY = process.env.NEXT_PUBLIC_CURRENCY || 'INR';
 
 const currency = new Intl.NumberFormat(LOCALE, { style: 'currency', currency: CURRENCY, minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const compactCurrency = new Intl.NumberFormat(LOCALE, { style: 'currency', currency: CURRENCY, notation: 'compact', maximumFractionDigits: 1 });

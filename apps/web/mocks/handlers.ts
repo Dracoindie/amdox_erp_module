@@ -34,9 +34,9 @@ const monthKey = (offset: number) => {
 
 const departments = [{ id: 'd1', name: 'Engineering' }, { id: 'd2', name: 'Human Resources' }, { id: 'd3', name: 'Finance' }, { id: 'd4', name: 'Sales' }];
 const employees: Employee[] = [
-  ['e1', 'Alice Johnson', 'Engineering', 'Frontend Lead', '120000'], ['e2', 'Bob Smith', 'Engineering', 'Backend Developer', '95000'],
-  ['e3', 'Carol White', 'Human Resources', 'HR Manager', '85000'], ['e4', 'Dev Mehta', 'Finance', 'Finance Manager', '110000'],
-  ['e5', 'Sara Kim', 'Sales', 'Account Executive', '78000'],
+  ['e1', 'Alice Johnson', 'Engineering', 'Frontend Lead', '1800000'], ['e2', 'Bob Smith', 'Engineering', 'Backend Developer', '1250000'],
+  ['e3', 'Carol White', 'Human Resources', 'HR Manager', '1200000'], ['e4', 'Dev Mehta', 'Finance', 'Finance Manager', '1600000'],
+  ['e5', 'Sara Kim', 'Sales', 'Account Executive', '650000'],
 ].map(([id, name, dept, title, salary]) => ({
   id: id!, userId: null, name: name!, email: `${name!.split(' ')[0]!.toLowerCase()}@amdox.com`, phone: null,
   departmentId: departments.find((d) => d.name === dept)!.id, designation: title!, grossSalary: salary!, joinDate: iso(400),
@@ -45,10 +45,10 @@ const employees: Employee[] = [
 
 const warehouses: Warehouse[] = [{ id: 'w1', name: 'Main Warehouse', location: 'Bangalore' }];
 const products: Product[] = [
-  ['p1', 'SKU-1001', 'ThinkPad T14 Gen 3', 'Electronics', '1200.00', 10, 38],
-  ['p2', 'SKU-1002', 'Ergonomic Office Chair', 'Furniture', '250.00', 15, 9],
-  ['p3', 'SKU-1003', 'Wireless Mouse M720', 'Accessories', '40.00', 30, 140],
-  ['p4', 'SKU-1004', '27-inch 4K Monitor', 'Electronics', '350.00', 10, 6],
+  ['p1', 'SKU-1001', 'ThinkPad T14 Gen 3', 'Electronics', '95000.00', 10, 38],
+  ['p2', 'SKU-1002', 'Ergonomic Office Chair', 'Furniture', '14500.00', 15, 9],
+  ['p3', 'SKU-1003', 'Wireless Mouse M720', 'Accessories', '4200.00', 30, 140],
+  ['p4', 'SKU-1004', '27-inch 4K Monitor', 'Electronics', '32000.00', 10, 6],
 ].map(([id, sku, name, category, price, reorder, qty]) => ({
   id: id as string, sku: sku as string, name: name as string, category: category as string, unitPrice: price as string,
   reorderLevel: reorder as number, unit: 'piece', isActive: true,
@@ -60,8 +60,8 @@ const suppliers: Supplier[] = [
   { id: 's2', name: 'OfficeWorks Ltd', email: 'sales@officeworks.example', phone: null, leadTimeDays: 10, paymentTerms: 'Net 45' },
 ];
 const purchaseOrders: PurchaseOrder[] = [
-  { id: 'po1', supplierId: 's1', status: 'ISSUED', description: 'Monitors restock', subtotal: '7000.00', tax: '1260.00', total: '8260.00', createdBy: 'u-admin', approvedBy: 'u-admin', createdAt: iso(6), supplier: { name: 'TechSupply Co.' } },
-  { id: 'po2', supplierId: 's2', status: 'DRAFT', description: 'Office chairs', subtotal: '3750.00', tax: '675.00', total: '4425.00', createdBy: 'u-admin', approvedBy: null, createdAt: iso(2), supplier: { name: 'OfficeWorks Ltd' } },
+  { id: 'po1', supplierId: 's1', status: 'ISSUED', description: 'Monitors restock', subtotal: '560000.00', tax: '100800.00', total: '660800.00', createdBy: 'u-admin', approvedBy: 'u-admin', createdAt: iso(6), supplier: { name: 'TechSupply Co.' } },
+  { id: 'po2', supplierId: 's2', status: 'DRAFT', description: 'Office chairs', subtotal: '217500.00', tax: '39150.00', total: '256650.00', createdBy: 'u-admin', approvedBy: null, createdAt: iso(2), supplier: { name: 'OfficeWorks Ltd' } },
 ];
 
 const customers: Customer[] = ['TechCorp', 'Global Solutions', 'Startup Inc', 'Enterprise LLC'].map((company, i) => ({
@@ -69,12 +69,12 @@ const customers: Customer[] = ['TechCorp', 'Global Solutions', 'Startup Inc', 'E
   assignedTo: null, tags: [], createdAt: iso(200 - i * 20),
 }));
 const leads: Lead[] = (['PROSPECT', 'QUALIFIED', 'PROPOSAL', 'NEGOTIATION', 'WON', 'LOST'] as const).map((stage, i) => ({
-  id: `l${i + 1}`, customerId: customers[i % 4]!.id, stage, value: String(20000 + i * 15000), expectedClose: null, assignedTo: null,
+  id: `l${i + 1}`, customerId: customers[i % 4]!.id, stage, value: String(400000 + i * 350000), expectedClose: null, assignedTo: null,
   notes: null, createdAt: iso(30 - i), customer: { name: customers[i % 4]!.name, company: customers[i % 4]!.company },
 }));
 const salesOrders: SalesOrder[] = [
-  { id: 'so1', number: 'SO-2026-00001', customerId: 'c4', description: 'Hardware bundle', total: '25000.00', status: 'FULFILLED', createdBy: 'u-admin', createdAt: iso(20), customer: { name: 'Emily Davis', company: 'Enterprise LLC' } },
-  { id: 'so2', number: 'SO-2026-00002', customerId: 'c3', description: 'Laptops', total: '12500.00', status: 'CONFIRMED', createdBy: 'u-admin', createdAt: iso(8), customer: { name: 'Mike Brown', company: 'Startup Inc' } },
+  { id: 'so1', number: 'SO-2026-00001', customerId: 'c4', description: 'Hardware bundle', total: '450000.00', status: 'FULFILLED', createdBy: 'u-admin', createdAt: iso(20), customer: { name: 'Emily Davis', company: 'Enterprise LLC' } },
+  { id: 'so2', number: 'SO-2026-00002', customerId: 'c3', description: 'Laptops', total: '875000.00', status: 'CONFIRMED', createdBy: 'u-admin', createdAt: iso(8), customer: { name: 'Mike Brown', company: 'Startup Inc' } },
 ];
 
 const accounts: Account[] = [['a1', '1000', 'Cash', 'asset'], ['a2', '1100', 'Accounts Receivable', 'asset'], ['a3', '4000', 'Sales Revenue', 'income'], ['a4', '6000', 'Operating Expenses', 'expense']]
@@ -85,12 +85,12 @@ const ledger: JournalEntry[] = [
       { id: 'jl2', entryId: 'j1', accountId: 'a2', debit: '0', credit: '15000.00', memo: null, account: { code: '1100', name: 'Accounts Receivable' } }] },
 ];
 const invoices: Invoice[] = customers.map((c, i) => ({
-  id: `inv${i + 1}`, customerId: c.id, number: `INV-2026-0000${i + 1}`, subtotal: String(10000 + i * 4000), tax: String((10000 + i * 4000) * 0.18),
-  total: String((10000 + i * 4000) * 1.18), status: (['PAID', 'SENT', 'OVERDUE', 'PAID'] as const)[i]!, dueDate: iso(-20), createdAt: iso(10 + i * 9),
+  id: `inv${i + 1}`, customerId: c.id, number: `INV-2026-0000${i + 1}`, subtotal: String(250000 + i * 90000), tax: String((250000 + i * 90000) * 0.18),
+  total: String((250000 + i * 90000) * 1.18), status: (['PAID', 'SENT', 'OVERDUE', 'PAID'] as const)[i]!, dueDate: iso(-20), createdAt: iso(10 + i * 9),
   customer: { name: c.name, company: c.company },
 }));
 const expenses: Expense[] = (['Marketing', 'Travel', 'Software', 'Office'] as const).map((category, i) => ({
-  id: `x${i + 1}`, category, amount: String(400 + i * 650), description: `${category} spend`, status: (['SUBMITTED', 'APPROVED', 'REIMBURSED', 'REJECTED'] as const)[i]!,
+  id: `x${i + 1}`, category, amount: String(4000 + i * 9500), description: `${category} spend`, status: (['SUBMITTED', 'APPROVED', 'REIMBURSED', 'REJECTED'] as const)[i]!,
   submittedBy: 'u-emp', approvedBy: null, createdAt: iso(i * 5),
 }));
 const payrollRuns: PayrollRun[] = [1, 2, 3].map((m) => ({
@@ -98,7 +98,7 @@ const payrollRuns: PayrollRun[] = [1, 2, 3].map((m) => ({
   totalGross: '40666.67', totalTaxes: '8133.33', totalNet: '30500.00', createdAt: iso(m * 30), _count: { payslips: 5 },
 }));
 const leaveRequests: LeaveRequest[] = [
-  { id: 'lr1', employeeId: 'e2', type: 'ANNUAL', fromDate: iso(-10), toDate: iso(-7), reason: 'Family trip', status: 'PENDING', approvedBy: null, createdAt: iso(2), employee: { name: 'Bob Smith' } },
+  { id: 'lr1', employeeId: 'e2', type: 'ANNUAL', fromDate: iso(-7), toDate: iso(-10), reason: 'Family trip', status: 'PENDING', approvedBy: null, createdAt: iso(2), employee: { name: 'Bob Smith' } },
   { id: 'lr2', employeeId: 'e1', type: 'SICK', fromDate: iso(12), toDate: iso(11), reason: null, status: 'APPROVED', approvedBy: 'u-admin', createdAt: iso(13), employee: { name: 'Alice Johnson' } },
 ];
 const notifications: Notification[] = [
@@ -116,9 +116,10 @@ const audit: AuditLog[] = [
 
 function biMonths(n: number): BIMonth[] {
   return Array.from({ length: n }, (_, i) => {
-    const revenue = 80000 + ((i * 7919) % 30000);
-    const exp = 12000 + ((i * 3571) % 6000);
-    const pay = 40666.67;
+    // Rupees: about ₹24L revenue, ₹1.2L expenses and ₹5.5L payroll a month
+    const revenue = 2000000 + ((i * 79190) % 800000);
+    const exp = 100000 + ((i * 35710) % 60000);
+    const pay = 545833.33;
     return {
       month: monthKey(n - 1 - i), revenue: revenue.toFixed(2), collected: (revenue * 0.8).toFixed(2), expenses: exp.toFixed(2),
       payroll: pay.toFixed(2), netProfit: (revenue - exp - pay).toFixed(2),
@@ -150,14 +151,14 @@ export const handlers = [
 
   http.get(`${A}/bi/overview`, () => {
     const data: DashboardOverview = {
-      finance: { revenueYtd: '985400.00', openInvoices: { count: 2, total: '40120.00' }, trend: biMonths(6) },
+      finance: { revenueYtd: '24854000.00', openInvoices: { count: 2, total: '845960.00' }, trend: biMonths(6) },
       people: {
         activeEmployees: employees.length,
         headcountByDepartment: departments.map((d) => ({ department: d.name, count: employees.filter((e) => e.departmentId === d.id).length })),
       },
-      payroll: { latest: { period: monthKey(1), totalNet: '30500.00', status: 'PAID' } },
+      payroll: { latest: { period: monthKey(1), totalNet: '409375.00', status: 'PAID' } },
       inventory: { lowStock: { count: 2, skus: ['SKU-1002', 'SKU-1004'] } },
-      sales: { pipeline: { count: 4, value: '170000.00' } },
+      sales: { pipeline: { count: 4, value: '3700000.00' } },
       me: { employeeName: 'Demo Admin', pendingLeave: 0, clockedIn: false, latestPayslip: null },
       recentActivity: audit.map((a) => ({ id: a.id, action: a.action, entity: a.entity, user: a.user.email, timestamp: a.timestamp })),
     };
@@ -204,7 +205,7 @@ export const handlers = [
   }),
   http.post(`${A}/inventory/forecast/demand`, () => {
     const today = new Date();
-    const day = (o: number) => new Date(today.getTime() + o * 86_400_000).toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+    const day = (o: number) => new Date(today.getTime() + o * 86_400_000).toLocaleDateString('en-IN', { month: 'short', day: '2-digit' });
     return ok({
       jobId: 'mock-job', status: 'Completed', cached: false,
       predictions: products.map((p, i) => {

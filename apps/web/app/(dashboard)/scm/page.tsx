@@ -8,7 +8,7 @@ import { useApi, useMutation } from '../../../lib/useApi';
 import { useAuthUser } from '../../../lib/useAuth';
 import { useDebounced } from '../../../lib/useDebounced';
 import { can, canRead } from '../../../lib/permissions';
-import { CURRENCY_SYMBOL, date, money, num, titleCase } from '../../../lib/format';
+import { CURRENCY_SYMBOL, date, dec, money, num, titleCase } from '../../../lib/format';
 import { ChartLegend, LineTrend, SLOT } from '../../../components/charts';
 import {
   Alert, Badge, BlockSkeleton, Button, Card, DataState, DataTable, EmptyState, Field, Form, FormActions, Input, Modal,
@@ -447,7 +447,7 @@ function ForecastTab() {
                 data={selected.timeSeries}
                 series={series}
                 xKey="day"
-                format={(v) => `${v.toLocaleString(undefined, { maximumFractionDigits: 1 })} units`}
+                format={(v) => `${dec(v)} units`}
                 axisFormat={(v) => String(Math.round(v))}
                 xInterval={6}
                 height={280}

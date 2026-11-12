@@ -9,7 +9,7 @@ Next.js 16 (App Router) dashboard. See the [root README](../../README.md) for se
 - `lib/axios.ts` — API client: CSRF header, single-flight token refresh, 422 field errors
 - `lib/useApi.ts` — `useApi` (GET with loading/error state) and `useMutation` (pending state, field errors, toasts)
 - `lib/theme.ts` — light / dark / system theme, applied before first paint
-- `lib/format.ts` — money, date and number formatting. Currency and locale come from `NEXT_PUBLIC_CURRENCY` / `NEXT_PUBLIC_LOCALE` (default `USD` / `en-US`; for rupees use `INR` / `en-IN`).
+- `lib/format.ts` — money, date and number formatting. Amounts are Indian rupees with Indian digit grouping by default (`INR` / `en-IN`: ₹12,34,567.00, compact ₹12.3L / ₹1.2Cr). Override at build time with `NEXT_PUBLIC_CURRENCY` / `NEXT_PUBLIC_LOCALE`.
 - `mocks/` — Mock Service Worker handlers, only active with `NEXT_PUBLIC_USE_MOCKS=true`
 
 ## Design system
