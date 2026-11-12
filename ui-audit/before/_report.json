@@ -1,0 +1,1290 @@
+{
+  "consoleErrors": [
+    {
+      "where": "extras/light/desktop http://localhost:3100/finance",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/light/desktop http://localhost:3100/finance",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/light/desktop http://localhost:3100/hr",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/light/desktop http://localhost:3100/hr",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/light/desktop http://localhost:3100/scm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/light/desktop http://localhost:3100/scm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/light/desktop http://localhost:3100/crm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/light/desktop http://localhost:3100/crm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/light/desktop http://localhost:3100/crm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/light/desktop http://localhost:3100/crm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/light/desktop http://localhost:3100/",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "where": "extras/light/desktop http://localhost:3100/finance",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "where": "extras/light/desktop http://localhost:3100/hr",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "where": "extras/light/desktop http://localhost:3100/bi",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "where": "extras/light/desktop http://localhost:3100/finance",
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+    },
+    {
+      "where": "extras/light/desktop http://localhost:3100/this-page-does-not-exist",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "where": "extras/light/mobile http://localhost:3100/finance",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/light/mobile http://localhost:3100/finance",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/light/mobile http://localhost:3100/hr",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/light/mobile http://localhost:3100/hr",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/light/mobile http://localhost:3100/scm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/light/mobile http://localhost:3100/scm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/light/mobile http://localhost:3100/crm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/light/mobile http://localhost:3100/crm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/light/mobile http://localhost:3100/crm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/light/mobile http://localhost:3100/crm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/light/mobile http://localhost:3100/",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "where": "extras/light/mobile http://localhost:3100/finance",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "where": "extras/light/mobile http://localhost:3100/hr",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "where": "extras/light/mobile http://localhost:3100/bi",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "where": "extras/light/mobile http://localhost:3100/finance",
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+    },
+    {
+      "where": "extras/light/mobile http://localhost:3100/this-page-does-not-exist",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "where": "public/light/desktop http://localhost:3100/login",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "where": "public/light/tablet http://localhost:3100/login",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "where": "public/light/mobile http://localhost:3100/login",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "where": "extras/dark/desktop http://localhost:3100/finance",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/dark/desktop http://localhost:3100/finance",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/dark/desktop http://localhost:3100/hr",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/dark/desktop http://localhost:3100/hr",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/dark/desktop http://localhost:3100/scm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/dark/desktop http://localhost:3100/scm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/dark/desktop http://localhost:3100/crm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/dark/desktop http://localhost:3100/crm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/dark/desktop http://localhost:3100/crm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/dark/desktop http://localhost:3100/crm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/dark/desktop http://localhost:3100/",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "where": "extras/dark/desktop http://localhost:3100/finance",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "where": "extras/dark/desktop http://localhost:3100/hr",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "where": "extras/dark/desktop http://localhost:3100/bi",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "where": "extras/dark/desktop http://localhost:3100/finance",
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+    },
+    {
+      "where": "extras/dark/desktop http://localhost:3100/this-page-does-not-exist",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "where": "extras/dark/mobile http://localhost:3100/finance",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/dark/mobile http://localhost:3100/finance",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/dark/mobile http://localhost:3100/hr",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/dark/mobile http://localhost:3100/hr",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/dark/mobile http://localhost:3100/scm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/dark/mobile http://localhost:3100/scm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/dark/mobile http://localhost:3100/crm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/dark/mobile http://localhost:3100/crm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/dark/mobile http://localhost:3100/crm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/dark/mobile http://localhost:3100/crm",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+      "where": "extras/dark/mobile http://localhost:3100/",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "where": "extras/dark/mobile http://localhost:3100/finance",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "where": "extras/dark/mobile http://localhost:3100/hr",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "where": "extras/dark/mobile http://localhost:3100/bi",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "where": "extras/dark/mobile http://localhost:3100/finance",
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+    },
+    {
+      "where": "extras/dark/mobile http://localhost:3100/this-page-does-not-exist",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "where": "public/dark/desktop http://localhost:3100/login",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "where": "public/dark/tablet http://localhost:3100/login",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "where": "public/dark/mobile http://localhost:3100/login",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    }
+  ],
+  "overflow": [
+    {
+      "name": "admin--dashboard--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--dashboard--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--finance--general-ledger--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--finance--general-ledger--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--finance--invoices--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--finance--invoices--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--finance--expenses--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--finance--expenses--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--finance--budgets--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--finance--budgets--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--finance--reports--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--finance--reports--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--hr--directory--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--hr--directory--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--hr--leave--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--hr--leave--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--hr--attendance--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--hr--attendance--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--hr--payroll--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--hr--payroll--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--hr--org-chart--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--hr--org-chart--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--scm--inventory--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--scm--inventory--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--scm--purchase-orders--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--scm--purchase-orders--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--scm--vendors--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--scm--vendors--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--scm--ai-forecast--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--scm--ai-forecast--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--crm--sales-pipeline--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--crm--sales-pipeline--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--crm--contacts--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--crm--contacts--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--crm--sales-orders--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--crm--sales-orders--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--bi--dashboards--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--bi--dashboards--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--bi--report-builder--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--bi--report-builder--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--settings--general--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--settings--general--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--settings--users-roles--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--settings--users-roles--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--settings--audit-log--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--settings--audit-log--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--settings--system-health--light--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--settings--system-health--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--dashboard--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--dashboard--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--finance--general-ledger--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--finance--general-ledger--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--finance--invoices--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--finance--invoices--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--finance--expenses--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--finance--expenses--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--finance--budgets--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--finance--budgets--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--finance--reports--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--finance--reports--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--hr--directory--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--hr--directory--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--hr--leave--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--hr--leave--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--hr--attendance--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--hr--attendance--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--hr--payroll--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--hr--payroll--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--hr--org-chart--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--hr--org-chart--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--scm--inventory--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--scm--inventory--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--scm--purchase-orders--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--scm--purchase-orders--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--scm--vendors--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--scm--vendors--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--scm--ai-forecast--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--scm--ai-forecast--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--crm--sales-pipeline--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--crm--sales-pipeline--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--crm--contacts--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--crm--contacts--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--crm--sales-orders--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--crm--sales-orders--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--bi--dashboards--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--bi--dashboards--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--bi--report-builder--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--bi--report-builder--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--settings--general--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--settings--general--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--settings--users-roles--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--settings--users-roles--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--settings--audit-log--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--settings--audit-log--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "admin--settings--system-health--dark--tablet",
+      "page": 0,
+      "main": 116
+    },
+    {
+      "name": "admin--settings--system-health--dark--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--dashboard--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--finance--general-ledger--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--finance--invoices--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--finance--expenses--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--finance--budgets--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--finance--reports--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--hr--directory--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--hr--leave--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--hr--attendance--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--hr--payroll--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--hr--org-chart--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--scm--inventory--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--scm--purchase-orders--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--scm--vendors--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--scm--ai-forecast--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--crm--sales-pipeline--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--crm--contacts--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--crm--sales-orders--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--bi--dashboards--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--bi--report-builder--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--settings--general--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--settings--users-roles--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--settings--audit-log--light--mobile",
+      "page": 0,
+      "main": 400
+    },
+    {
+      "name": "employee--settings--system-health--light--mobile",
+      "page": 0,
+      "main": 400
+    }
+  ],
+  "axe": {
+    "dashboard": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 6,
+        "sample": [
+          ".leading-none.font-extrabold.tracking-tight > .text-\\[\\#ff5a00\\]",
+          ".mb-3"
+        ]
+      },
+      {
+        "id": "svg-img-alt",
+        "impact": "serious",
+        "help": "<svg> elements with an img or image role must have alternative text",
+        "nodes": 5,
+        "sample": [
+          "path[name=\"Engineering\"]",
+          "path[name=\"Human Resources\"]"
+        ]
+      }
+    ],
+    "finance/General Ledger": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 7,
+        "sample": [
+          ".font-extrabold.tracking-tight.leading-none > .text-\\[\\#ff5a00\\]",
+          ".mb-3"
+        ]
+      }
+    ],
+    "finance/Invoices": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 16,
+        "sample": [
+          ".font-extrabold.tracking-tight.leading-none > .text-\\[\\#ff5a00\\]",
+          ".mb-3"
+        ]
+      }
+    ],
+    "finance/Expenses": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 9,
+        "sample": [
+          ".font-extrabold.tracking-tight.leading-none > .text-\\[\\#ff5a00\\]",
+          ".mb-3"
+        ]
+      }
+    ],
+    "finance/Budgets": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 8,
+        "sample": [
+          ".font-extrabold.tracking-tight.leading-none > .text-\\[\\#ff5a00\\]",
+          ".mb-3"
+        ]
+      }
+    ],
+    "finance/Reports": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 6,
+        "sample": [
+          ".leading-none.font-extrabold.tracking-tight > span",
+          ".mb-3"
+        ]
+      }
+    ],
+    "hr/Directory": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 16,
+        "sample": [
+          ".font-extrabold.tracking-tight.leading-none > .text-\\[\\#ff5a00\\]",
+          ".mb-3"
+        ]
+      }
+    ],
+    "hr/Leave": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 9,
+        "sample": [
+          ".font-extrabold.tracking-tight.leading-none > .text-\\[\\#ff5a00\\]",
+          ".mb-3"
+        ]
+      }
+    ],
+    "hr/Attendance": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 7,
+        "sample": [
+          ".font-extrabold.tracking-tight.leading-none > span",
+          ".mb-3"
+        ]
+      }
+    ],
+    "hr/Payroll": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 7,
+        "sample": [
+          ".font-extrabold.tracking-tight.leading-none > .text-\\[\\#ff5a00\\]",
+          ".mb-3"
+        ]
+      }
+    ],
+    "hr/Org Chart": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 16,
+        "sample": [
+          ".font-extrabold.tracking-tight.leading-none > .text-\\[\\#ff5a00\\]",
+          ".mb-3"
+        ]
+      }
+    ],
+    "scm/Inventory": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 7,
+        "sample": [
+          ".leading-none.font-extrabold.tracking-tight > .text-\\[\\#ff5a00\\]",
+          ".mb-3"
+        ]
+      }
+    ],
+    "scm/Purchase Orders": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 9,
+        "sample": [
+          ".font-extrabold.tracking-tight.leading-none > .text-\\[\\#ff5a00\\]",
+          ".mb-3"
+        ]
+      }
+    ],
+    "scm/Vendors": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 7,
+        "sample": [
+          ".font-extrabold.tracking-tight.leading-none > .text-\\[\\#ff5a00\\]",
+          ".mb-3"
+        ]
+      }
+    ],
+    "scm/AI Forecast": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 7,
+        "sample": [
+          ".font-extrabold.tracking-tight.leading-none > span",
+          ".mb-3"
+        ]
+      }
+    ],
+    "crm/Sales Pipeline": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 20,
+        "sample": [
+          ".font-extrabold.tracking-tight.leading-none > .text-\\[\\#ff5a00\\]",
+          ".mb-3"
+        ]
+      }
+    ],
+    "crm/Contacts": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 7,
+        "sample": [
+          ".font-extrabold.tracking-tight.leading-none > .text-\\[\\#ff5a00\\]",
+          ".mb-3"
+        ]
+      }
+    ],
+    "crm/Sales Orders": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 9,
+        "sample": [
+          ".font-extrabold.tracking-tight.leading-none > .text-\\[\\#ff5a00\\]",
+          ".mb-3"
+        ]
+      }
+    ],
+    "bi/Dashboards": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 6,
+        "sample": [
+          ".leading-none.font-extrabold.tracking-tight > .text-\\[\\#ff5a00\\]",
+          ".mb-3"
+        ]
+      },
+      {
+        "id": "svg-img-alt",
+        "impact": "serious",
+        "help": "<svg> elements with an img or image role must have alternative text",
+        "nodes": 6,
+        "sample": [
+          "path[name=\"Marketing\"]",
+          "path[name=\"Infrastructure\"]"
+        ]
+      }
+    ],
+    "bi/Report Builder": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 6,
+        "sample": [
+          ".font-extrabold.tracking-tight.leading-none > .text-\\[\\#ff5a00\\]",
+          ".mb-3"
+        ]
+      }
+    ],
+    "settings/General": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 6,
+        "sample": [
+          ".font-extrabold.tracking-tight.leading-none > span",
+          ".mb-3"
+        ]
+      }
+    ],
+    "settings/Users & Roles": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 7,
+        "sample": [
+          ".font-extrabold.tracking-tight.leading-none > .text-\\[\\#ff5a00\\]",
+          ".mb-3"
+        ]
+      }
+    ],
+    "settings/Audit Log": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 6,
+        "sample": [
+          ".font-extrabold.tracking-tight.leading-none > .text-\\[\\#ff5a00\\]",
+          ".mb-3"
+        ]
+      }
+    ],
+    "settings/System Health": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": 6,
+        "sample": [
+          ".leading-none.font-extrabold.tracking-tight > span",
+          ".mb-3"
+        ]
+      }
+    ]
+  },
+  "missing": [
+    "tab \"General Ledger\" on http://localhost:3100/login?next=%2Ffinance",
+    "tab \"Directory\" on http://localhost:3100/login?next=%2Fhr",
+    "tab \"Inventory\" on http://localhost:3100/login?next=%2Fscm",
+    "tab \"Contacts\" on http://localhost:3100/login?next=%2Fcrm",
+    "tab \"Sales Pipeline\" on http://localhost:3100/login?next=%2Fcrm",
+    "mobile navigation toggle",
+    "tab \"General Ledger\" on http://localhost:3100/login?next=%2Ffinance",
+    "tab \"Directory\" on http://localhost:3100/login?next=%2Fhr",
+    "tab \"Inventory\" on http://localhost:3100/login?next=%2Fscm",
+    "tab \"Contacts\" on http://localhost:3100/login?next=%2Fcrm",
+    "tab \"Sales Pipeline\" on http://localhost:3100/login?next=%2Fcrm",
+    "tab \"General Ledger\" on http://localhost:3100/login?next=%2Ffinance",
+    "tab \"Directory\" on http://localhost:3100/login?next=%2Fhr",
+    "tab \"Inventory\" on http://localhost:3100/login?next=%2Fscm",
+    "tab \"Contacts\" on http://localhost:3100/login?next=%2Fcrm",
+    "tab \"Sales Pipeline\" on http://localhost:3100/login?next=%2Fcrm",
+    "mobile navigation toggle",
+    "tab \"General Ledger\" on http://localhost:3100/login?next=%2Ffinance",
+    "tab \"Directory\" on http://localhost:3100/login?next=%2Fhr",
+    "tab \"Inventory\" on http://localhost:3100/login?next=%2Fscm",
+    "tab \"Contacts\" on http://localhost:3100/login?next=%2Fcrm",
+    "tab \"Sales Pipeline\" on http://localhost:3100/login?next=%2Fcrm"
+  ]
+}
