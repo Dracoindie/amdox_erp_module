@@ -1,4 +1,4 @@
-import { ok, badRequest } from '../utils/response';
+import { ok } from '../utils/response';
 import { Response } from 'express';
 
 describe('Response Utilities', () => {
@@ -24,16 +24,6 @@ describe('Response Utilities', () => {
       success: true,
       message: 'Success',
       data,
-    });
-  });
-
-  it('should format error response correctly', () => {
-    badRequest(mockRes as Response, 'Not Found');
-    
-    expect(resStatus).toHaveBeenCalledWith(400);
-    expect(resJson).toHaveBeenCalledWith({
-      success: false,
-      message: 'Not Found',
     });
   });
 });

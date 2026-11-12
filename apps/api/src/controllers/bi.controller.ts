@@ -1,8 +1,8 @@
-import { Request, Response } from 'express';
+import { endpoint, noInput } from '../middleware/validate';
 import { prisma } from '../utils/prisma';
 import { ok } from '../utils/response';
 
-export async function getBISummary(req: Request, res: Response) {
+export const getBISummary = endpoint({ query: noInput }, async (_input, _req, res) => {
   // Aggregate actual active payroll expense from the database
   const activeSalaries = await prisma.employee.aggregate({
     _sum: {
@@ -53,4 +53,4 @@ export async function getBISummary(req: Request, res: Response) {
   ];
 
   return ok(res, { sales, expenses, profit }, 'BI Summary retrieved successfully');
-}
+});

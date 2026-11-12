@@ -233,7 +233,7 @@ export default function SCMPage() {
   useEffect(() => {
     api.post('/inventory/forecast/demand', {})
       .then((res) => {
-        setAiForecast(res.data);
+        setAiForecast(res.data?.data ?? null);
       })
       .catch(err => console.error('Failed to fetch AI forecast from ml-service', err));
   }, []);

@@ -67,11 +67,11 @@ const csrfProtection = csurf({ cookie: { httpOnly: true, secure: process.env.NOD
 
 // Apply CSRF to all routes after cookie parser
 if (process.env.NODE_ENV !== 'test') {
-  app.use(csrfProtection);
+  app.use(csrfProtection as unknown as express.RequestHandler);
 }
 
 app.get('/api/v1/csrf-token', (req, res) => {
-  res.json({ success: true, data: { csrfToken: req.csrfToken() } });
+  res.json({ success: true, data: { csrfToken: (req as unknown as { csrfToken?: () => string }).csrfToken?.() ?? '' } });
 });
 
 // ─── Root Route ───────────────────────────────────────────────────────────────

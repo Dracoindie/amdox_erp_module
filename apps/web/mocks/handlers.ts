@@ -127,7 +127,7 @@ export const handlers = [
       return points;
     };
 
-    return HttpResponse.json({
+    return HttpResponse.json({ success: true, message: "Forecast generated", data: {
       jobId: "AI-JOB-MOCK-VERCEL",
       status: "Completed",
       predictions: [
@@ -168,7 +168,7 @@ export const handlers = [
           timeSeries: generateTimeSeries("SKU-1004")
         }
       ]
-    });
+    } });
   }),
 
   // ── Suppliers List Mock ──────────────────────────────────────

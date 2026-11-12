@@ -3,7 +3,8 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt';
-import { ok, badRequest, unauthorized, unprocessable } from '../utils/response';
+import { ok } from '../utils/response';
+import { HttpError } from '../utils/httpError';
 import { logger } from '../utils/logger';
 
 // ── Validation Schemas ────────────────────────────────────────────────────────
@@ -42,19 +43,19 @@ const COOKIE_OPTS = {
 export async function login(req: Request, res: Response) {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
-    return unprocessable(res, 'Validation failed', parsed.error.flatten());
+    throw new HttpError(422, 'Validation failed');
   }
 
   const { email, password } = parsed.data;
 
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user || !user.isActive) {
-    return unauthorized(res, 'Invalid email or password');
+    throw new HttpError(401, 'Invalid email or password');
   }
 
   const passwordMatch = await bcrypt.compare(password, user.passwordHash);
   if (!passwordMatch) {
-    return unauthorized(res, 'Invalid email or password');
+    throw new HttpError(401, 'Invalid email or password');
   }
 
   const payload = { userId: user.id, email: user.email, role: user.role };
@@ -129,14 +130,14 @@ export async function refresh(req: Request, res: Response) {
   const refreshToken = req.cookies?.refreshToken as string | undefined;
 
   if (!refreshToken) {
-    return unauthorized(res, 'No refresh token provided');
+    throw new HttpError(401, 'No refresh token provided');
   }
 
   let payload;
   try {
     payload = verifyRefreshToken(refreshToken);
   } catch {
-    return unauthorized(res, 'Refresh token expired or invalid');
+    throw new HttpError(401, 'Refresh token expired or invalid');
   }
 
   // Verify against stored sessions
@@ -151,7 +152,7 @@ export async function refresh(req: Request, res: Response) {
   }
 
   if (!validSession) {
-    return unauthorized(res, 'Session not found or revoked');
+    throw new HttpError(401, 'Session not found or revoked');
   }
 
   const accessToken = signAccessToken({
@@ -169,7 +170,7 @@ export async function refresh(req: Request, res: Response) {
  */
 export async function forgotPassword(req: Request, res: Response) {
   const parsed = forgotSchema.safeParse(req.body);
-  if (!parsed.success) return unprocessable(res, 'Invalid email');
+  if (!parsed.success) throw new HttpError(422, 'Invalid email');
 
   const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
 
@@ -185,12 +186,12 @@ export async function forgotPassword(req: Request, res: Response) {
 /**
  * POST /api/v1/auth/reset-password
  */
-export async function resetPassword(req: Request, res: Response) {
+export async function resetPassword(req: Request, _res: Response) {
   const parsed = resetSchema.safeParse(req.body);
-  if (!parsed.success) return unprocessable(res, 'Validation failed', parsed.error.flatten());
+  if (!parsed.success) throw new HttpError(422, 'Validation failed');
 
   // TODO: validate reset token from DB, update password hash
-  return badRequest(res, 'Password reset via token not yet implemented — use seed script');
+  throw new HttpError(400, 'Password reset via token not yet implemented — use seed script');
 }
 
 /**
@@ -198,13 +199,13 @@ export async function resetPassword(req: Request, res: Response) {
  * Returns the currently authenticated user's profile
  */
 export async function me(req: Request, res: Response) {
-  if (!req.user) return unauthorized(res);
+  if (!req.user) throw new HttpError(401, 'Unauthorized');
 
   const user = await prisma.user.findUnique({
     where: { id: req.user.userId },
     select: { id: true, email: true, role: true, isActive: true, createdAt: true },
   });
 
-  if (!user) return unauthorized(res, 'User not found');
+  if (!user) throw new HttpError(401, 'User not found');
   return ok(res, user);
 }

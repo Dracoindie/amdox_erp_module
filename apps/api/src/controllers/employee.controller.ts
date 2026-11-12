@@ -1,89 +1,79 @@
-import { Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
-import { ok, created, notFoundResp, unprocessable, parsePagination, buildMeta } from '../utils/response';
+import { ok, created, listQuery, paging, buildMeta } from '../utils/response';
+import { endpoint, idParams, uuid } from '../middleware/validate';
+import { notFound } from '../utils/httpError';
 
 const createSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().trim().min(1).max(200),
   email: z.string().email(),
-  phone: z.string().optional(),
-  departmentId: z.string().uuid().optional(),
-  designation: z.string().optional(),
+  phone: z.string().max(50).optional(),
+  departmentId: uuid.optional(),
+  designation: z.string().max(200).optional(),
   grossSalary: z.number().positive(),
   joinDate: z.string().datetime().or(z.string().date()),
-});
+  status: z.enum(['ACTIVE', 'ONBOARDING', 'TERMINATED']).optional(),
+}).strict();
 
-const updateSchema = createSchema.partial();
+const listSchema = listQuery(['createdAt', 'name', 'email', 'joinDate', 'grossSalary']);
 
-export async function listEmployees(req: Request, res: Response) {
-  const { page, limit, skip, sort, order, search } = parsePagination(req.query as any);
-
-  const where = search
-    ? { isArchived: false, OR: [
-        { name: { contains: search, mode: 'insensitive' as const } },
-        { email: { contains: search, mode: 'insensitive' as const } },
-        { designation: { contains: search, mode: 'insensitive' as const } },
-      ]}
-    : { isArchived: false };
+export const listEmployees = endpoint({ query: listSchema }, async ({ query }, _req, res) => {
+  const where = {
+    isArchived: false,
+    ...(query.search && {
+      OR: [
+        { name: { contains: query.search, mode: 'insensitive' as const } },
+        { email: { contains: query.search, mode: 'insensitive' as const } },
+        { designation: { contains: query.search, mode: 'insensitive' as const } },
+      ],
+    }),
+  };
 
   const [employees, total] = await Promise.all([
     prisma.employee.findMany({
       where,
-      skip,
-      take: limit,
-      orderBy: { [sort]: order },
+      ...paging(query),
+      orderBy: { [query.sort]: query.order },
       include: { department: { select: { name: true } } },
     }),
     prisma.employee.count({ where }),
   ]);
 
-  return ok(res, employees, 'Employees retrieved', buildMeta(page, limit, total));
-}
+  return ok(res, employees, 'Employees retrieved', buildMeta(query.page, query.limit, total));
+});
 
-export async function getEmployee(req: Request, res: Response) {
+export const getEmployee = endpoint({ params: idParams }, async ({ params }, _req, res) => {
   const employee = await prisma.employee.findUnique({
-    where: { id: req.params.id },
+    where: { id: params.id },
     include: { department: true },
   });
-  if (!employee) return notFoundResp(res, 'Employee not found');
+  if (!employee) throw notFound('Employee');
   return ok(res, employee);
-}
+});
 
-export async function createEmployee(req: Request, res: Response) {
-  const parsed = createSchema.safeParse(req.body);
-  if (!parsed.success) return unprocessable(res, 'Validation failed', parsed.error.flatten());
-
+export const createEmployee = endpoint({ body: createSchema }, async ({ body }, _req, res) => {
   const employee = await prisma.employee.create({
-    data: { ...parsed.data, joinDate: new Date(parsed.data.joinDate) },
+    data: { ...body, joinDate: new Date(body.joinDate) },
     include: { department: { select: { name: true } } },
   });
   return created(res, employee, 'Employee created');
-}
+});
 
-export async function updateEmployee(req: Request, res: Response) {
-  const parsed = updateSchema.safeParse(req.body);
-  if (!parsed.success) return unprocessable(res, 'Validation failed', parsed.error.flatten());
+export const updateEmployee = endpoint(
+  { params: idParams, body: createSchema.partial() },
+  async ({ params, body }, _req, res) => {
+    const updated = await prisma.employee.update({
+      where: { id: params.id },
+      data: { ...body, ...(body.joinDate && { joinDate: new Date(body.joinDate) }) },
+    });
+    return ok(res, updated, 'Employee updated');
+  },
+);
 
-  const existing = await prisma.employee.findUnique({ where: { id: req.params.id } });
-  if (!existing) return notFoundResp(res, 'Employee not found');
-
+export const archiveEmployee = endpoint({ params: idParams }, async ({ params }, _req, res) => {
   const updated = await prisma.employee.update({
-    where: { id: req.params.id },
-    data: {
-      ...parsed.data,
-      ...(parsed.data.joinDate && { joinDate: new Date(parsed.data.joinDate) }),
-    },
-  });
-  return ok(res, updated, 'Employee updated');
-}
-
-export async function archiveEmployee(req: Request, res: Response) {
-  const existing = await prisma.employee.findUnique({ where: { id: req.params.id } });
-  if (!existing) return notFoundResp(res, 'Employee not found');
-
-  const updated = await prisma.employee.update({
-    where: { id: req.params.id },
+    where: { id: params.id },
     data: { isArchived: true, status: 'TERMINATED' },
   });
   return ok(res, updated, 'Employee archived');
-}
+});

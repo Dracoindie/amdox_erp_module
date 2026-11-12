@@ -25,16 +25,13 @@ describe('Auth Controller', () => {
   describe('login', () => {
     it('should return 400 if email or password is missing', async () => {
       mockReq = { body: {} };
-      await login(mockReq as Request, mockRes as Response);
-      expect(resStatus).toHaveBeenCalledWith(422);
-      expect(resJson).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
+      await expect(login(mockReq as Request, mockRes as Response)).rejects.toMatchObject({ status: 422 });
     });
 
     it('should return 401 for invalid credentials', async () => {
       mockReq = { body: { email: 'test@test.com', password: 'password' } };
       prismaMock.user.findUnique.mockResolvedValue(null);
-      await login(mockReq as Request, mockRes as Response);
-      expect(resStatus).toHaveBeenCalledWith(401);
+      await expect(login(mockReq as Request, mockRes as Response)).rejects.toMatchObject({ status: 401 });
     });
 
     it('should return 200 and tokens on successful login', async () => {

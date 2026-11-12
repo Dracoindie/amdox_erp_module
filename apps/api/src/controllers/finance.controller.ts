@@ -1,146 +1,133 @@
-import { Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
-import { ok, created, notFoundResp, unprocessable, parsePagination, buildMeta } from '../utils/response';
+import { ok, created, listQuery, paging, buildMeta } from '../utils/response';
+import { endpoint, idParams, uuid, isoDate } from '../middleware/validate';
+import { HttpError } from '../utils/httpError';
 
 // ── Journal Entries ───────────────────────────────────────────────────────────
 
 const entrySchema = z.object({
-  date: z.string().date(),
-  description: z.string().min(1),
+  date: isoDate,
+  description: z.string().trim().min(1).max(500),
   lines: z.array(z.object({
-    accountId: z.string().uuid(),
+    accountId: uuid,
     debit: z.number().min(0).default(0),
     credit: z.number().min(0).default(0),
-    memo: z.string().optional(),
-  })).min(2, 'At least 2 journal lines required'),
-});
+    memo: z.string().max(500).optional(),
+  }).strict()).min(2, 'At least 2 journal lines required').max(100),
+}).strict();
 
-export async function listJournalEntries(req: Request, res: Response) {
-  const { page, limit, skip, sort, order, search } = parsePagination(req.query as any);
-  const where = search ? { description: { contains: search, mode: 'insensitive' as const } } : {};
+const ledgerQuery = listQuery(['date', 'createdAt', 'totalDebit']);
+
+export const listJournalEntries = endpoint({ query: ledgerQuery }, async ({ query }, _req, res) => {
+  const where = query.search ? { description: { contains: query.search, mode: 'insensitive' as const } } : {};
   const [entries, total] = await Promise.all([
     prisma.journalEntry.findMany({
       where,
-      skip,
-      take: limit,
-      orderBy: { [sort]: order },
+      ...paging(query),
+      orderBy: { [query.sort]: query.order },
       include: { lines: { include: { account: { select: { code: true, name: true } } } } },
     }),
     prisma.journalEntry.count({ where }),
   ]);
-  return ok(res, entries, 'Journal entries retrieved', buildMeta(page, limit, total));
-}
+  return ok(res, entries, 'Journal entries retrieved', buildMeta(query.page, query.limit, total));
+});
 
-export async function createJournalEntry(req: Request, res: Response) {
-  const parsed = entrySchema.safeParse(req.body);
-  if (!parsed.success) return unprocessable(res, 'Validation failed', parsed.error.flatten());
-
-  const { date, description, lines } = parsed.data;
-  const totalDebit  = lines.reduce((s, l) => s + l.debit, 0);
-  const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
-
+export const createJournalEntry = endpoint({ body: entrySchema }, async ({ body }, req, res) => {
+  const totalDebit = body.lines.reduce((s, l) => s + l.debit, 0);
+  const totalCredit = body.lines.reduce((s, l) => s + l.credit, 0);
   if (Math.abs(totalDebit - totalCredit) > 0.01) {
-    return unprocessable(res, 'ACID Violation: Total debits must equal total credits');
+    throw new HttpError(422, 'Total debits must equal total credits');
   }
 
   const entry = await prisma.journalEntry.create({
     data: {
-      date: new Date(date),
-      description,
+      date: new Date(body.date),
+      description: body.description,
       createdBy: req.user!.userId,
       totalDebit,
       totalCredit,
       status: 'POSTED',
-      lines: { create: lines },
+      lines: { create: body.lines },
     },
     include: { lines: true },
   });
   return created(res, entry, 'Journal entry posted');
-}
+});
 
 // ── Invoices ──────────────────────────────────────────────────────────────────
 
+const INVOICE_STATUSES = ['DRAFT', 'SENT', 'PAID', 'OVERDUE', 'VOID'] as const;
+
 const invoiceSchema = z.object({
-  customerId: z.string().uuid(),
+  customerId: uuid,
   subtotal: z.number().min(0),
   tax: z.number().min(0).default(0),
-  dueDate: z.string().date().optional(),
+  dueDate: isoDate.optional(),
+}).strict();
+
+const invoiceQuery = listQuery(['createdAt', 'dueDate', 'total', 'number']).extend({
+  status: z.enum(INVOICE_STATUSES).optional(),
 });
 
-export async function listInvoices(req: Request, res: Response) {
-  const { page, limit, skip, sort, order } = parsePagination(req.query as any);
-  const status = req.query.status as string | undefined;
-  const where = status ? { status: status as any } : {};
+export const listInvoices = endpoint({ query: invoiceQuery }, async ({ query }, _req, res) => {
+  const where = query.status ? { status: query.status } : {};
   const [invoices, total] = await Promise.all([
     prisma.invoice.findMany({
       where,
-      skip,
-      take: limit,
-      orderBy: { [sort]: order },
+      ...paging(query),
+      orderBy: { [query.sort]: query.order },
       include: { customer: { select: { name: true, company: true } } },
     }),
     prisma.invoice.count({ where }),
   ]);
-  return ok(res, invoices, 'Invoices retrieved', buildMeta(page, limit, total));
-}
+  return ok(res, invoices, 'Invoices retrieved', buildMeta(query.page, query.limit, total));
+});
 
-export async function createInvoice(req: Request, res: Response) {
-  const parsed = invoiceSchema.safeParse(req.body);
-  if (!parsed.success) return unprocessable(res, 'Validation failed', parsed.error.flatten());
-
+export const createInvoice = endpoint({ body: invoiceSchema }, async ({ body }, _req, res) => {
   const count = await prisma.invoice.count();
   const number = `INV-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
-
   const invoice = await prisma.invoice.create({
     data: {
-      ...parsed.data,
+      customerId: body.customerId,
+      subtotal: body.subtotal,
+      tax: body.tax,
       number,
-      total: parsed.data.subtotal + parsed.data.tax,
-      ...(parsed.data.dueDate && { dueDate: new Date(parsed.data.dueDate) }),
+      total: body.subtotal + body.tax,
+      dueDate: body.dueDate ? new Date(body.dueDate) : undefined,
     },
     include: { customer: { select: { name: true } } },
   });
   return created(res, invoice, 'Invoice created');
-}
+});
 
-export async function updateInvoiceStatus(req: Request, res: Response) {
-  const { status } = z.object({
-    status: z.enum(['DRAFT','SENT','PAID','OVERDUE','VOID']),
-  }).parse(req.body);
-
-  const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id } });
-  if (!invoice) return notFoundResp(res, 'Invoice not found');
-
-  const updated = await prisma.invoice.update({
-    where: { id: req.params.id },
-    data: { status },
-  });
-  return ok(res, updated, 'Invoice status updated');
-}
+export const updateInvoiceStatus = endpoint(
+  { params: idParams, body: z.object({ status: z.enum(INVOICE_STATUSES) }).strict() },
+  async ({ params, body }, _req, res) => {
+    const updated = await prisma.invoice.update({ where: { id: params.id }, data: { status: body.status } });
+    return ok(res, updated, 'Invoice status updated');
+  },
+);
 
 // ── Expenses ──────────────────────────────────────────────────────────────────
 
 const expenseSchema = z.object({
-  category: z.string().min(1),
+  category: z.string().trim().min(1).max(100),
   amount: z.number().positive(),
-  description: z.string().optional(),
-});
+  description: z.string().max(1000).optional(),
+}).strict();
 
-export async function listExpenses(req: Request, res: Response) {
-  const { page, limit, skip, sort, order } = parsePagination(req.query as any);
+const expenseQuery = listQuery(['createdAt', 'amount', 'category']);
+
+export const listExpenses = endpoint({ query: expenseQuery }, async ({ query }, _req, res) => {
   const [expenses, total] = await Promise.all([
-    prisma.expense.findMany({ skip, take: limit, orderBy: { [sort]: order } }),
+    prisma.expense.findMany({ ...paging(query), orderBy: { [query.sort]: query.order } }),
     prisma.expense.count(),
   ]);
-  return ok(res, expenses, 'Expenses retrieved', buildMeta(page, limit, total));
-}
+  return ok(res, expenses, 'Expenses retrieved', buildMeta(query.page, query.limit, total));
+});
 
-export async function createExpense(req: Request, res: Response) {
-  const parsed = expenseSchema.safeParse(req.body);
-  if (!parsed.success) return unprocessable(res, 'Validation failed', parsed.error.flatten());
-  const expense = await prisma.expense.create({
-    data: { ...parsed.data, submittedBy: req.user!.userId },
-  });
+export const createExpense = endpoint({ body: expenseSchema }, async ({ body }, req, res) => {
+  const expense = await prisma.expense.create({ data: { ...body, submittedBy: req.user!.userId } });
   return created(res, expense, 'Expense submitted');
-}
+});

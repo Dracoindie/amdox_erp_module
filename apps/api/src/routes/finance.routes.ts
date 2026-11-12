@@ -10,16 +10,16 @@ const router = Router();
 router.use(requireAuth);
 
 // General Ledger
-router.get('/ledger',     listJournalEntries);
-router.post('/ledger',    requireRole('SUPER_ADMIN','FINANCE_MANAGER'), createJournalEntry);
+router.get('/ledger',     ...listJournalEntries);
+router.post('/ledger',    requireRole('SUPER_ADMIN','FINANCE_MANAGER'), ...createJournalEntry);
 
 // Invoices
-router.get('/invoices',         listInvoices);
-router.post('/invoices',        requireRole('SUPER_ADMIN','FINANCE_MANAGER'), createInvoice);
-router.patch('/invoices/:id',   requireRole('SUPER_ADMIN','FINANCE_MANAGER'), updateInvoiceStatus);
+router.get('/invoices',         ...listInvoices);
+router.post('/invoices',        requireRole('SUPER_ADMIN','FINANCE_MANAGER'), ...createInvoice);
+router.patch('/invoices/:id',   requireRole('SUPER_ADMIN','FINANCE_MANAGER'), ...updateInvoiceStatus);
 
 // Expenses
-router.get('/expenses',   listExpenses);
-router.post('/expenses',  createExpense);
+router.get('/expenses',   ...listExpenses);
+router.post('/expenses',  ...createExpense);
 
 export default router;

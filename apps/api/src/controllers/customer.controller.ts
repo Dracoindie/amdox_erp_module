@@ -1,56 +1,55 @@
-import { Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
-import { ok, created, notFoundResp, unprocessable, parsePagination, buildMeta } from '../utils/response';
+import { ok, created, listQuery, paging, buildMeta } from '../utils/response';
+import { endpoint, idParams } from '../middleware/validate';
+import { notFound } from '../utils/httpError';
 
 const createSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().trim().min(1).max(200),
   email: z.string().email().optional(),
-  phone: z.string().optional(),
-  company: z.string().optional(),
-  assignedTo: z.string().optional(),
-  tags: z.array(z.string()).optional(),
-});
+  phone: z.string().max(50).optional(),
+  company: z.string().max(200).optional(),
+  assignedTo: z.string().max(200).optional(),
+  tags: z.array(z.string().max(50)).max(20).optional(),
+}).strict();
 
-const updateSchema = createSchema.partial();
+const listSchema = listQuery(['createdAt', 'name', 'company', 'email']);
 
-export async function listCustomers(req: Request, res: Response) {
-  const { page, limit, skip, sort, order, search } = parsePagination(req.query as any);
-  const where = search
-    ? { OR: [
-        { name: { contains: search, mode: 'insensitive' as const } },
-        { email: { contains: search, mode: 'insensitive' as const } },
-        { company: { contains: search, mode: 'insensitive' as const } },
-      ]}
+export const listCustomers = endpoint({ query: listSchema }, async ({ query }, _req, res) => {
+  const where = query.search
+    ? {
+        OR: [
+          { name: { contains: query.search, mode: 'insensitive' as const } },
+          { email: { contains: query.search, mode: 'insensitive' as const } },
+          { company: { contains: query.search, mode: 'insensitive' as const } },
+        ],
+      }
     : {};
   const [customers, total] = await Promise.all([
-    prisma.customer.findMany({ where, skip, take: limit, orderBy: { [sort]: order } }),
+    prisma.customer.findMany({ where, ...paging(query), orderBy: { [query.sort]: query.order } }),
     prisma.customer.count({ where }),
   ]);
-  return ok(res, customers, 'Customers retrieved', buildMeta(page, limit, total));
-}
+  return ok(res, customers, 'Customers retrieved', buildMeta(query.page, query.limit, total));
+});
 
-export async function getCustomer(req: Request, res: Response) {
+export const getCustomer = endpoint({ params: idParams }, async ({ params }, _req, res) => {
   const customer = await prisma.customer.findUnique({
-    where: { id: req.params.id },
+    where: { id: params.id },
     include: { leads: true, interactions: { orderBy: { createdAt: 'desc' }, take: 10 } },
   });
-  if (!customer) return notFoundResp(res, 'Customer not found');
+  if (!customer) throw notFound('Customer');
   return ok(res, customer);
-}
+});
 
-export async function createCustomer(req: Request, res: Response) {
-  const parsed = createSchema.safeParse(req.body);
-  if (!parsed.success) return unprocessable(res, 'Validation failed', parsed.error.flatten());
-  const customer = await prisma.customer.create({ data: parsed.data });
+export const createCustomer = endpoint({ body: createSchema }, async ({ body }, _req, res) => {
+  const customer = await prisma.customer.create({ data: body });
   return created(res, customer, 'Customer created');
-}
+});
 
-export async function updateCustomer(req: Request, res: Response) {
-  const parsed = updateSchema.safeParse(req.body);
-  if (!parsed.success) return unprocessable(res, 'Validation failed', parsed.error.flatten());
-  const existing = await prisma.customer.findUnique({ where: { id: req.params.id } });
-  if (!existing) return notFoundResp(res, 'Customer not found');
-  const customer = await prisma.customer.update({ where: { id: req.params.id }, data: parsed.data });
-  return ok(res, customer, 'Customer updated');
-}
+export const updateCustomer = endpoint(
+  { params: idParams, body: createSchema.partial() },
+  async ({ params, body }, _req, res) => {
+    const customer = await prisma.customer.update({ where: { id: params.id }, data: body });
+    return ok(res, customer, 'Customer updated');
+  },
+);

@@ -1,6 +1,6 @@
-import { Request, Response, NextFunction } from 'express';
-import { verifyAccessToken, TokenPayload } from '../utils/jwt';
-import { unauthorized, forbidden } from '../utils/response';
+import type { Request, Response, NextFunction } from 'express';
+import { verifyAccessToken, type TokenPayload } from '../utils/jwt';
+import { HttpError } from '../utils/httpError';
 
 // Extend Express Request to carry the decoded JWT payload
 declare global {
@@ -12,33 +12,30 @@ declare global {
 }
 
 // ── requireAuth ───────────────────────────────────────────────────────────────
-// Validates the Bearer token in the Authorization header.
-// Attaches decoded payload to req.user on success.
+// Validates the Bearer token in the Authorization header and attaches the
+// decoded payload to req.user.
 
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
+export function requireAuth(req: Request, _res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
-    return unauthorized(res, 'Missing or invalid Authorization header');
+    return next(new HttpError(401, 'Missing or invalid Authorization header'));
   }
-
-  const token = header.slice(7);
   try {
-    req.user = verifyAccessToken(token);
+    req.user = verifyAccessToken(header.slice(7));
     return next();
   } catch {
-    return unauthorized(res, 'Access token expired or invalid');
+    return next(new HttpError(401, 'Access token expired or invalid'));
   }
 }
 
 // ── requireRole ───────────────────────────────────────────────────────────────
-// Role-based access guard. Pass one or more allowed roles.
-// Usage: router.get('/admin', requireAuth, requireRole('SUPER_ADMIN'), handler)
+// Usage: router.post('/', requireRole('SUPER_ADMIN', 'HR_MANAGER'), ...handler)
 
-export function requireRole(...roles: string[]) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    if (!req.user) return unauthorized(res);
+export function requireRole(...roles: readonly string[]) {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    if (!req.user) return next(new HttpError(401, 'Unauthorized'));
     if (!roles.includes(req.user.role)) {
-      return forbidden(res, `Requires one of: ${roles.join(', ')}`);
+      return next(new HttpError(403, 'You do not have permission to perform this action'));
     }
     return next();
   };

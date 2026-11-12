@@ -1,41 +1,42 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { requireAuth, requireRole } from '../middleware/auth.middleware';
-import { ok } from '../utils/response';
+import { endpoint, noInput } from '../middleware/validate';
+import { ok, buildMeta, paging } from '../utils/response';
 import { prisma } from '../utils/prisma';
-import { parsePagination, buildMeta } from '../utils/response';
 
 const router = Router();
 router.use(requireAuth, requireRole('SUPER_ADMIN'));
 
-// Audit logs
-router.get('/audit-logs', async (req, res) => {
-  const { page, limit, skip } = parsePagination(req.query as any);
+const auditQuery = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+}).strict();
+
+router.get('/audit-logs', ...endpoint({ query: auditQuery }, async ({ query }, _req, res) => {
   const [logs, total] = await Promise.all([
     prisma.auditLog.findMany({
-      skip,
-      take: limit,
+      ...paging(query),
       orderBy: { timestamp: 'desc' },
       include: { user: { select: { email: true } } },
     }),
     prisma.auditLog.count(),
   ]);
-  return ok(res, logs, 'Audit logs retrieved', buildMeta(page, limit, total));
-});
+  return ok(res, logs, 'Audit logs retrieved', buildMeta(query.page, query.limit, total));
+}));
 
-// System health
-router.get('/system-health', async (_req, res) => {
-  const [userCount, employeeCount, productCount] = await Promise.all([
+router.get('/system-health', ...endpoint({ query: noInput }, async (_input, _req, res) => {
+  const [users, employees, products] = await Promise.all([
     prisma.user.count(),
     prisma.employee.count({ where: { isArchived: false } }),
     prisma.product.count({ where: { isActive: true } }),
   ]);
-
   return ok(res, {
     status: 'healthy',
     database: 'connected',
     timestamp: new Date().toISOString(),
-    stats: { users: userCount, employees: employeeCount, products: productCount },
+    stats: { users, employees, products },
   });
-});
+}));
 
 export default router;
