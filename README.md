@@ -30,7 +30,7 @@ A modular ERP for a single organisation: finance (double-entry ledger, invoices,
 | API | Node.js 22, Express 5.3, Prisma 5.22, Zod 3, jsonwebtoken, helmet, express-rate-limit, winston |
 | Data | PostgreSQL 16; money stored as `DECIMAL(14,2)` |
 | ML | Python 3.11, FastAPI 0.111, Pydantic 2, pandas, Prophet 1.1.6 |
-| Tooling | pnpm 9, Turborepo 2, TypeScript 5, Jest 30 + Supertest, pytest, GitHub Actions, Docker, Kubernetes manifests |
+| Tooling | pnpm 9, Turborepo 2, TypeScript 5, Jest 30 + Supertest, pytest, GitHub Actions, Docker, Kubernetes manifests (untested templates) |
 
 ```
 apps/
@@ -40,7 +40,7 @@ apps/
 packages/
   types/        Shared API contracts (index.d.ts) used by api and web
   eslint-config/, typescript-config/
-k8s/            Deployments, services, config, secret template (kustomize)
+k8s/            Deployments, services, config, secret template (kustomize) — untested templates
 docker-compose.yml
 ```
 
@@ -130,7 +130,9 @@ Change these for anything other than a local demo.
 
 ### Static demo (no backend)
 
-Build the web app with `NEXT_PUBLIC_USE_MOCKS=true` and Mock Service Worker answers every API call with sample data (any credentials sign in as a demo admin; writes are disabled). This is how the Vercel preview runs. Never enable it for a real deployment.
+Build the web app with `NEXT_PUBLIC_USE_MOCKS=true` and Mock Service Worker answers every API call with sample data (any credentials sign in as a demo admin; writes are disabled). Never enable it for a real deployment.
+
+> **Vercel:** the Vercel demo has no backend, so the Vercel project **must** set `NEXT_PUBLIC_USE_MOCKS=true` (Project → Settings → Environment Variables, then redeploy — it is read at build time). Without it the app calls `http://localhost:4000` and every page fails to load.
 
 ---
 
@@ -192,7 +194,7 @@ CI (`.github/workflows/ci.yml`) runs all of the above on Node 22 with a Postgres
 ## Deployment
 
 - **Images**: `apps/api/Dockerfile`, `apps/web/Dockerfile` (pass `--build-arg NEXT_PUBLIC_API_URL=…`), `apps/ml-service/Dockerfile`. All run as non-root with health checks.
-- **Kubernetes**: `kubectl apply -k k8s/` after creating the `amdox-erp-secrets` Secret (see `k8s/secret.example.yaml`). The API applies migrations in an init container; the ml-service only accepts traffic from the API (NetworkPolicy). PostgreSQL is expected to be a managed service.
+- **Kubernetes** — ⚠️ **untested templates.** The manifests have only been YAML-parsed; they have never been applied to a cluster. Review images, resources, ingress and secrets before use. `kubectl apply -k k8s/` after creating the `amdox-erp-secrets` Secret (see `k8s/secret.example.yaml`). The API applies migrations in an init container; the ml-service only accepts traffic from the API (NetworkPolicy). PostgreSQL is expected to be a managed service.
 
 ## Limitations
 
@@ -201,4 +203,5 @@ CI (`.github/workflows/ci.yml`) runs all of the above on Node 22 with a Postgres
 - **Purchase orders have no line items**, so receiving a PO does not change stock — record an IN movement.
 - **Flat payroll rates** (20 % tax, 5 % insurance) for demonstration.
 - **Rate limits and the forecast cache are per process**; with several API replicas each enforces its own limit.
+- **Kubernetes manifests are untested templates** (see [Deployment](#deployment)).
 - Access tokens stay valid for up to 15 minutes after logout (refresh tokens are revoked immediately).
