@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PaginationMeta } from '@repo/types';
-import api, { apiErrorMessage } from './axios';
+import api, { apiErrorMessage, apiFieldErrors } from './axios';
+import { useToast } from '../components/ui/Toast';
 
 export interface ApiState<T> {
   data: T | undefined;
@@ -17,6 +18,7 @@ export interface ApiState<T> {
 /**
  * GET an API path and unwrap the { success, data, meta } envelope.
  * Pass null to skip the request (e.g. when the user lacks permission).
+ * While a new path loads, the previous data stays available (no flash).
  */
 export function useApi<T>(path: string | null): ApiState<T> {
   const [state, setState] = useState<Omit<ApiState<T>, 'reload'>>({
@@ -51,21 +53,49 @@ export function useApi<T>(path: string | null): ApiState<T> {
   return { ...state, reload };
 }
 
-/** Wraps a mutating call with pending/error state for buttons and forms. */
-export function useMutation<A extends unknown[], R>(fn: (...args: A) => Promise<R>) {
+interface MutationOptions<R> {
+  /** Toast shown on success */
+  success?: string | ((result: R) => string);
+  /** Show failures as a toast (row actions without a form to show them in) */
+  errorToast?: boolean;
+}
+
+/**
+ * Wraps a mutating call with pending / error state. Field errors from a 422
+ * response are exposed as `fieldErrors` for <Form errors={…}>.
+ */
+export function useMutation<A extends unknown[], R>(fn: (...args: A) => Promise<R>, options: MutationOptions<R> = {}) {
+  const toast = useToast();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const opts = useRef(options);
+  opts.current = options;
+
   const run = useCallback(async (...args: A): Promise<R | undefined> => {
     setPending(true);
     setError(null);
+    setFieldErrors({});
     try {
-      return await fn(...args);
+      const result = await fn(...args);
+      const { success } = opts.current;
+      if (success) toast.success(typeof success === 'function' ? success(result) : success);
+      return result;
     } catch (err) {
-      setError(apiErrorMessage(err));
+      const message = apiErrorMessage(err);
+      setError(message);
+      setFieldErrors(apiFieldErrors(err));
+      if (opts.current.errorToast) toast.error(message);
       return undefined;
     } finally {
       setPending(false);
     }
-  }, [fn]);
-  return { run, pending, error, setError };
+  }, [fn, toast]);
+
+  const reset = useCallback(() => {
+    setError(null);
+    setFieldErrors({});
+  }, []);
+
+  return { run, pending, error, fieldErrors, reset };
 }

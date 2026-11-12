@@ -1,33 +1,187 @@
 @import "tailwindcss";
 
-@source "../../packages/ui";
-
+/* Dark mode is class-based: <html class="dark"> is set before first paint by the
+   inline script in app/layout.tsx (no light flash). */
 @custom-variant dark (&:where(.dark, .dark *));
 
-@theme {
-  --color-amdox-orange: #ff5a00;
-  --color-amdox-dark: #09090b;
-  --color-amdox-slate: #1e293b;
-  --color-amdox-success: #10B981;
+/* ── Design tokens ──────────────────────────────────────────────────────────────
+   Components use the semantic names below (bg-surface, text-fg-muted,
+   border-line, bg-primary …). Raw hex values live only in this file, so light
+   and dark mode are switched in one place. Contrast targets: body text ≥ 7:1,
+   secondary text ≥ 4.5:1 on every surface, primary button text ≥ 4.5:1. */
+
+:root {
+  color-scheme: light;
+
+  --canvas: #f5f6f8;          /* app background */
+  --surface: #ffffff;         /* cards, header, sidebar */
+  --surface-2: #f1f3f6;       /* table header, hover, inputs at rest */
+  --surface-3: #e7eaef;       /* selected / pressed */
+  --line: #e2e5ea;            /* borders, dividers */
+  --line-strong: #c9cfd8;     /* input borders */
+
+  --fg: #0f172a;              /* primary text      16.7:1 on surface */
+  --fg-muted: #3f4a5c;        /* secondary text     9.0:1 */
+  --fg-subtle: #5b6576;       /* hints, captions    5.6:1 surface, 4.9:1 surface-2 */
+
+  --primary: #c2410c;         /* brand action       5.2:1 with white text */
+  --primary-hover: #9a3412;
+  --primary-fg: #ffffff;
+  --primary-soft: #fff1e8;    /* selected nav, tints */
+  --primary-soft-fg: #9a3412; /* 6.6:1 on primary-soft */
+  --brand: #ff5a00;           /* logo mark and decorative accents only (not text) */
+  --ring: #c2410c;
+
+  --success: #047857;  --success-soft: #ecfdf5;  --success-line: #a7f3d0;
+  --warning: #b45309;  --warning-soft: #fffbeb;  --warning-line: #fde68a;
+  --danger: #b91c1c;   --danger-soft: #fef2f2;   --danger-line: #fecaca;
+  --danger-solid: #b91c1c; /* destructive button background (white text 6.5:1) */
+  --info: #1d4ed8;     --info-soft: #eff6ff;     --info-line: #bfdbfe;
+
+  /* Charts: reference categorical palette, validated for CVD separation (light surface) */
+  --series-1: #2a78d6;  /* blue   */
+  --series-2: #eb6834;  /* orange */
+  --series-3: #1baf7a;  /* aqua   */
+  --series-4: #eda100;  /* yellow */
+  --series-5: #e87ba4;  /* magenta*/
+  --series-6: #008300;  /* green  */
+  --series-7: #6250d6;  /* violet */
+  --series-8: #e34948;  /* red    */
+  --chart-grid: #e7eaef;
+  --chart-axis: #5b6576;
+
+  --overlay: rgb(15 23 42 / 0.5);
 }
 
-/* Boilerplate resets */
-html,
+.dark {
+  color-scheme: dark;
+
+  --canvas: #0b0f17;
+  --surface: #121826;
+  --surface-2: #1a2132;
+  --surface-3: #232c40;
+  --line: #263044;
+  --line-strong: #364158;
+
+  --fg: #e8ecf3;
+  --fg-muted: #b4bdcc;        /* 9.3:1 on surface */
+  --fg-subtle: #8f9aae;       /* 6.2:1 surface, 5.6:1 surface-2 */
+
+  --primary: #c2410c;
+  --primary-hover: #dc5a1e;
+  --primary-fg: #ffffff;
+  --primary-soft: rgb(249 115 22 / 0.14);
+  --primary-soft-fg: #fdba74;
+  --brand: #ff6a1a;
+  --ring: #fb923c;
+
+  --success: #34d399;  --success-soft: rgb(16 185 129 / 0.14);  --success-line: rgb(52 211 153 / 0.35);
+  --warning: #fbbf24;  --warning-soft: rgb(245 158 11 / 0.14);  --warning-line: rgb(251 191 36 / 0.35);
+  --danger: #f87171;   --danger-soft: rgb(239 68 68 / 0.14);    --danger-line: rgb(248 113 113 / 0.35);
+  --danger-solid: #b91c1c;
+  --info: #60a5fa;     --info-soft: rgb(59 130 246 / 0.14);     --info-line: rgb(96 165 250 / 0.35);
+
+  /* Same hues, stepped for the dark surface */
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
+  --chart-grid: #232c40;
+  --chart-axis: #8f9aae;
+
+  --overlay: rgb(0 0 0 / 0.6);
+}
+
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-soft-fg: var(--primary-soft-fg);
+  --color-brand: var(--brand);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-success-line: var(--success-line);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-line: var(--warning-line);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-line: var(--danger-line);
+  --color-danger-solid: var(--danger-solid);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-info-line: var(--info-line);
+  --color-overlay: var(--overlay);
+}
+
+/* ── Base ─────────────────────────────────────────────────────────────────────── */
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
+}
+
 body {
-  max-width: 100vw;
-  overflow-x: hidden;
+  background: var(--canvas);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
 }
 
-body {
-  color: #0f172a;
-  background: #f8fafc;
+/* One visible focus style for keyboard users everywhere */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
-* {
-  box-sizing: border-box;
+::selection {
+  background: rgb(249 115 22 / 0.25);
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+/* Native <dialog> modal: backdrop + entry animation */
+dialog::backdrop {
+  background: var(--overlay);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  dialog[open] {
+    animation: dialog-in 160ms ease-out;
+  }
+  .animate-toast-in {
+    animation: toast-in 180ms ease-out;
+  }
+}
+
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Recharts: never draw the default focus rectangle around the SVG */
+.recharts-wrapper svg:focus,
+.recharts-surface:focus {
+  outline: none;
 }
