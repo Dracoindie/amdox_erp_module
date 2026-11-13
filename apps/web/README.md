@@ -34,5 +34,28 @@ pnpm --filter web dev            # http://localhost:3000
 pnpm --filter web check-types
 pnpm --filter web lint
 pnpm --filter web test:e2e       # Playwright smoke + axe (WCAG 2.1 AA) tests; need API + web running and a seeded DB (WEB_URL to override)
+pnpm --filter web test:e2e:edge  # same tests in the installed Microsoft Edge instead of the bundled Chromium
 pnpm --filter web ui:capture     # screenshots of every page, role, width and theme → ui-audit/after
 ```
+
+### End-to-end tests when the bundled browser is blocked (Windows)
+
+**Symptom:** every Playwright test fails at once, before any page loads, with:
+
+```
+Error: browserType.launch: spawn UNKNOWN
+```
+
+The browser path in the error is Playwright's bundled browser under `%LOCALAPPDATA%\ms-playwright\chromium_headless_shell-*\chrome-headless-shell-win64\chrome-headless-shell.exe`.
+
+**Why:** Windows Application Control (WDAC / Smart App Control, or a company policy) only allows approved executables. Playwright's downloaded `chrome-headless-shell.exe` isn't one of them, so Windows refuses to start it and Node reports the refusal as `spawn UNKNOWN`. Nothing is wrong with the tests or the app.
+
+**Fix:** run the tests in the installed Microsoft Edge, which the policy allows:
+
+```bash
+pnpm --filter web test:e2e:edge
+```
+
+This sets `PW_CHANNEL=msedge` (through `cross-env`, so it works in Windows PowerShell 5.1, cmd, macOS and Linux), and `playwright.config.ts` uses it as the browser channel. You can also set `PW_CHANNEL` yourself, e.g. `chrome` for an installed Google Chrome. Without `PW_CHANNEL`, the bundled Chromium is used, which is what CI runs.
+
+Edge runs headless, like the bundled browser. If Edge is blocked too, ask whoever manages the device's policy to allow the Playwright browser instead of working around the policy.

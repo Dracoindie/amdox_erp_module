@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "check-types": "next typegen && tsc --noEmit",
     "test:e2e": "playwright test",
+    "test:e2e:edge": "cross-env PW_CHANNEL=msedge playwright test",
     "ui:capture": "node e2e/capture.mjs ../../ui-audit/after"
   },
   "dependencies": {
@@ -33,6 +34,7 @@
     "@types/node": "^22.15.3",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
+    "cross-env": "7.0.3",
     "eslint": "^9.39.1",
     "msw": "^2.6.4",
     "postcss": "^8.5.14",
