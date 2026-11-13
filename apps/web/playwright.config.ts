@@ -14,6 +14,10 @@ export default defineConfig({
     baseURL: process.env.WEB_URL ?? 'http://localhost:3000',
     viewport: { width: 1440, height: 900 },
     trace: 'retain-on-failure',
+    // PW_CHANNEL=msedge (or chrome) runs an installed browser instead of the
+    // bundled Chromium, e.g. where Windows Application Control blocks
+    // chrome-headless-shell.exe (see README). Unset: bundled Chromium, as in CI.
+    ...(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {}),
     launchOptions: process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {},
   },
 });
