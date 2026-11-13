@@ -9,4 +9,12 @@ export default [
       "@typescript-eslint/no-unused-vars": "off",
     },
   },
+  {
+    // Playwright scripts run in Node (page.evaluate callbacks run in the browser)
+    files: ["e2e/**", "playwright.config.ts"],
+    languageOptions: {
+      globals: { process: "readonly", console: "readonly", document: "readonly", window: "readonly", localStorage: "readonly" },
+    },
+    rules: { "turbo/no-undeclared-env-vars": "off" },
+  },
 ];

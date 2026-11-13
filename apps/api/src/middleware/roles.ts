@@ -11,10 +11,45 @@ export const ROLES = {
   FINANCE: ['SUPER_ADMIN', 'FINANCE_MANAGER'],
   INVENTORY: ['SUPER_ADMIN', 'INVENTORY_MANAGER'],
   SALES: ['SUPER_ADMIN', 'SALES_REP'],
-  // May see salaries / payroll
-  PAYROLL_VIEW: ['SUPER_ADMIN', 'HR_MANAGER', 'FINANCE_MANAGER'],
   // Everyone who works here; READ_ONLY accounts can only look
   STAFF: ['SUPER_ADMIN', 'HR_MANAGER', 'FINANCE_MANAGER', 'INVENTORY_MANAGER', 'SALES_REP', 'EMPLOYEE'],
+  // May submit expense claims (own claims only; finance approves)
+  EXPENSE_SUBMIT: ['SUPER_ADMIN', 'HR_MANAGER', 'FINANCE_MANAGER', 'INVENTORY_MANAGER', 'SALES_REP', 'EMPLOYEE'],
+} as const satisfies Record<string, readonly string[]>;
+
+/**
+ * Read access per module. A role reads the modules it writes to, plus what it
+ * clearly needs; READ_ONLY reads everything and writes nothing. EMPLOYEE reads
+ * only its own records: profile, attendance, leave, payslips and expense claims
+ * (self-service routes scope by the caller).
+ *
+ *                     ADMIN  HR  FIN  INV  SALES  EMP  RO
+ *   PEOPLE              x    x    x                    x   directory, departments (finance: payroll)
+ *   PEOPLE_RECORDS      x    x                         x   everyone's leave & attendance
+ *   PAYROLL             x    x    x                    x   runs, payslips, salaries
+ *   FINANCE             x         x                    x   accounts, ledger, invoices, budgets, all expenses
+ *   EXPENSES            x    x    x    x    x     x    x   own claims (finance/RO: all)
+ *   ANALYTICS           x         x                    x   BI summary
+ *   INVENTORY           x              x    x          x   products, stock (sales: availability)
+ *   PURCHASING          x         x    x               x   POs, suppliers (finance: payables)
+ *   CUSTOMERS           x         x         x          x   customers (finance: invoicing)
+ *   LEADS               x                   x          x
+ *   SALES_ORDERS        x         x         x          x   (finance: invoicing)
+ *   ADMIN               x                              x   users, audit log, system health
+ */
+export const READ = {
+  PEOPLE: ['SUPER_ADMIN', 'HR_MANAGER', 'FINANCE_MANAGER', 'READ_ONLY'],
+  PEOPLE_RECORDS: ['SUPER_ADMIN', 'HR_MANAGER', 'READ_ONLY'],
+  PAYROLL: ['SUPER_ADMIN', 'HR_MANAGER', 'FINANCE_MANAGER', 'READ_ONLY'],
+  FINANCE: ['SUPER_ADMIN', 'FINANCE_MANAGER', 'READ_ONLY'],
+  EXPENSES: ['SUPER_ADMIN', 'HR_MANAGER', 'FINANCE_MANAGER', 'INVENTORY_MANAGER', 'SALES_REP', 'EMPLOYEE', 'READ_ONLY'],
+  ANALYTICS: ['SUPER_ADMIN', 'FINANCE_MANAGER', 'READ_ONLY'],
+  INVENTORY: ['SUPER_ADMIN', 'INVENTORY_MANAGER', 'SALES_REP', 'READ_ONLY'],
+  PURCHASING: ['SUPER_ADMIN', 'INVENTORY_MANAGER', 'FINANCE_MANAGER', 'READ_ONLY'],
+  CUSTOMERS: ['SUPER_ADMIN', 'SALES_REP', 'FINANCE_MANAGER', 'READ_ONLY'],
+  LEADS: ['SUPER_ADMIN', 'SALES_REP', 'READ_ONLY'],
+  SALES_ORDERS: ['SUPER_ADMIN', 'SALES_REP', 'FINANCE_MANAGER', 'READ_ONLY'],
+  ADMIN: ['SUPER_ADMIN', 'READ_ONLY'],
 } as const satisfies Record<string, readonly string[]>;
 
 export function hasRole(req: Request, group: readonly string[]) {

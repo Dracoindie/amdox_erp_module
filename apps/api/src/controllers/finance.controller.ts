@@ -3,7 +3,7 @@ import { prisma } from '../utils/prisma';
 import { ok, created, listQuery, paging, buildMeta } from '../utils/response';
 import { endpoint, idParams, uuid, isoDate } from '../middleware/validate';
 import { HttpError } from '../utils/httpError';
-import { ROLES, hasRole } from '../middleware/roles';
+import { READ, hasRole } from '../middleware/roles';
 import { Decimal, nonNegativeMoney, positiveMoney, sum } from '../utils/money';
 import { nextCounterValue } from '../services/counter.service';
 import { notifyUsers } from '../services/notify.service';
@@ -151,7 +151,7 @@ const expenseQuery = listQuery(['createdAt', 'amount', 'category']).extend({
 
 // Finance (and read-only auditors) see every expense; staff see their own.
 export const listExpenses = endpoint({ query: expenseQuery }, async ({ query }, req, res) => {
-  const seesAll = hasRole(req, [...ROLES.FINANCE, 'READ_ONLY']);
+  const seesAll = hasRole(req, READ.FINANCE);
   const where = {
     ...(seesAll ? {} : { submittedBy: req.user!.userId }),
     ...(query.status && { status: query.status }),
@@ -161,6 +161,16 @@ export const listExpenses = endpoint({ query: expenseQuery }, async ({ query }, 
     prisma.expense.count({ where }),
   ]);
   return ok(res, expenses, 'Expenses retrieved', buildMeta(query.page, query.limit, total));
+});
+
+// One claim: finance and auditors may open any; everyone else only their own.
+export const getExpense = endpoint({ params: idParams }, async ({ params }, req, res) => {
+  const expense = await prisma.expense.findUnique({ where: { id: params.id } });
+  if (!expense) throw new HttpError(404, 'Expense not found');
+  if (!hasRole(req, READ.FINANCE) && expense.submittedBy !== req.user!.userId) {
+    throw new HttpError(403, 'You can only view your own expense claims');
+  }
+  return ok(res, expense, 'Expense retrieved');
 });
 
 export const createExpense = endpoint({ body: expenseSchema }, async ({ body }, req, res) => {

@@ -1,38 +1,43 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Package, ShoppingCart, Truck, BrainCircuit, Plus, ArrowRightLeft } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { ArrowRightLeft, BrainCircuit, Package, Plus, ShoppingCart, Truck } from 'lucide-react';
 import type { AIForecastResponse, Product, PurchaseOrder, StockMovementType, Supplier, Warehouse } from '@repo/types';
 import api from '../../../lib/axios';
 import { useApi, useMutation } from '../../../lib/useApi';
 import { useAuthUser } from '../../../lib/useAuth';
-import { can } from '../../../lib/permissions';
-import { date, money, titleCase } from '../../../lib/format';
+import { useDebounced } from '../../../lib/useDebounced';
+import { can, canRead } from '../../../lib/permissions';
+import { CURRENCY_SYMBOL, date, dec, money, num, titleCase } from '../../../lib/format';
+import { ChartLegend, LineTrend, SLOT } from '../../../components/charts';
 import {
-  Badge, Button, Card, DataState, EmptyState, ErrorState, Field, InlineError, Input, Modal, PageHeader, Pager, Select, Spinner, StatCard, Table, Tabs, Td,
+  Alert, Badge, BlockSkeleton, Button, Card, DataState, DataTable, EmptyState, Field, Form, FormActions, Input, Modal,
+  PageHeader, Pagination, SearchInput, Select, StatCard, TabPanel, Tabs, Textarea, useConfirm, useTabParam,
+  type Column, type SortState,
 } from '../../../components/ui';
-
-type Tab = 'inventory' | 'orders' | 'vendors' | 'ai';
-const TABS = [
-  { id: 'inventory', label: 'Inventory', icon: Package },
-  { id: 'orders', label: 'Purchase Orders', icon: ShoppingCart },
-  { id: 'vendors', label: 'Vendors', icon: Truck },
-  { id: 'ai', label: 'AI Forecast', icon: BrainCircuit },
-] as const;
 
 const totalStock = (p: Product) => p.stockLevels.reduce((s, l) => s + l.quantity, 0);
 
 export default function SCMPage() {
-  const [tab, setTab] = useState<Tab>('inventory');
+  const user = useAuthUser();
+  const tabs = [
+    { id: 'inventory', label: 'Inventory', icon: Package, hidden: !canRead(user, 'INVENTORY') },
+    { id: 'orders', label: 'Purchase orders', icon: ShoppingCart, hidden: !canRead(user, 'PURCHASING') },
+    { id: 'vendors', label: 'Vendors', icon: Truck, hidden: !canRead(user, 'PURCHASING') },
+    // The forecast endpoint is restricted to inventory roles: hide rather than show a 403
+    { id: 'ai', label: 'Demand forecast', icon: BrainCircuit, hidden: !can(user, 'INVENTORY') },
+  ] as const;
+  const [tab, setTab] = useTabParam(tabs);
   return (
     <div className="space-y-6">
-      <PageHeader title="Supply Chain" subtitle="Stock levels, purchasing, vendors and demand forecasting" />
-      <Tabs tabs={TABS} active={tab} onChange={setTab} />
-      {tab === 'inventory' && <InventoryTab />}
-      {tab === 'orders' && <OrdersTab />}
-      {tab === 'vendors' && <VendorsTab />}
-      {tab === 'ai' && <ForecastTab />}
+      <PageHeader title="Supply Chain" description="Stock levels, purchasing, vendors and demand forecasting." />
+      <Tabs tabs={tabs} active={tab} onChange={setTab} label="Supply chain sections" />
+      <TabPanel id={tab}>
+        {tab === 'inventory' && <InventoryTab />}
+        {tab === 'orders' && <OrdersTab />}
+        {tab === 'vendors' && <VendorsTab />}
+        {tab === 'ai' && <ForecastTab />}
+      </TabPanel>
     </div>
   );
 }
@@ -43,150 +48,173 @@ function InventoryTab() {
   const user = useAuthUser();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<SortState>({ key: 'sku', order: 'asc' });
   const [moveOpen, setMoveOpen] = useState(false);
   const [productOpen, setProductOpen] = useState(false);
-  const q = new URLSearchParams({ page: String(page), limit: '20', sort: 'sku', order: 'asc', ...(search && { search }) });
-  const products = useApi<Product[]>(`/inventory/products?${q}`);
+  const q = useDebounced(search);
+  const params = new URLSearchParams({ page: String(page), limit: '20', sort: sort.key, order: sort.order, ...(q && { search: q }) });
+  const products = useApi<Product[]>(`/inventory/products?${params}`);
+  const canEdit = can(user, 'INVENTORY');
   const low = products.data?.filter((p) => totalStock(p) <= p.reorderLevel) ?? [];
   const value = products.data?.reduce((s, p) => s + totalStock(p) * Number(p.unitPrice), 0) ?? 0;
 
+  const columns: Column<Product>[] = [
+    {
+      key: 'name', header: 'Product', primary: true, sortKey: 'name',
+      cell: (p) => <><span className="block font-medium">{p.name}</span><span className="block font-mono text-xs text-fg-subtle">{p.sku}</span></>,
+    },
+    { key: 'category', header: 'Category', sortKey: 'category', cell: (p) => p.category ?? '—' },
+    { key: 'price', header: 'Unit price', numeric: true, sortKey: 'unitPrice', cell: (p) => money(p.unitPrice) },
+    {
+      key: 'stock', header: 'In stock', numeric: true,
+      cell: (p) => (
+        <span title={p.stockLevels.map((l) => `${l.warehouse.name}: ${l.quantity}`).join('\n')}>
+          <span className="font-medium">{num(totalStock(p))}</span>
+          {p.stockLevels.length > 1 && <span className="block text-xs text-fg-subtle">{p.stockLevels.length} warehouses</span>}
+        </span>
+      ),
+    },
+    { key: 'reorder', header: 'Reorder at', numeric: true, cell: (p) => num(p.reorderLevel) },
+    { key: 'status', header: 'Status', cell: (p) => (totalStock(p) <= p.reorderLevel ? <Badge tone="bad">Low stock</Badge> : <Badge tone="good">In stock</Badge>) },
+  ];
+
   return (
-    <div className="space-y-6">
+    <>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard label="SKUs (this page)" value={products.data?.length ?? '—'} />
-        <StatCard label="Stock value (this page)" value={money(value)} tone="brand" />
-        <StatCard label="Below reorder level" value={low.length} hint={low.map((p) => p.sku).join(', ') || 'None'} tone={low.length ? 'bad' : 'good'} />
+        <StatCard label="Products (this page)" value={products.data ? num(products.data.length) : '—'} hint={products.meta ? `${products.meta.total} in catalogue` : undefined} />
+        <StatCard label="Stock value (this page)" value={money(value)} hint="Quantity × unit price" />
+        <StatCard
+          label="Below reorder level"
+          value={num(low.length)}
+          hint={low.length ? low.map((p) => p.sku).join(', ') : 'Nothing to reorder'}
+          tone={low.length ? 'bad' : 'good'}
+        />
       </div>
       <Card
         title="Products"
+        flush
         actions={
-          <div className="flex gap-2">
-            <Input placeholder="Search SKU or name" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} className="w-56" />
-            {can(user, 'INVENTORY') && (
+          <>
+            <SearchInput label="Search SKU or name" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+            {canEdit && (
               <>
-                <Button variant="secondary" onClick={() => setMoveOpen(true)}><ArrowRightLeft className="h-4 w-4" /> Stock movement</Button>
-                <Button onClick={() => setProductOpen(true)}><Plus className="h-4 w-4" /> Product</Button>
+                <Button variant="secondary" icon={ArrowRightLeft} onClick={() => setMoveOpen(true)}>Record movement</Button>
+                <Button icon={Plus} onClick={() => setProductOpen(true)}>New product</Button>
               </>
             )}
-          </div>
+          </>
         }
       >
-        <DataState state={products} empty={{ title: 'No products found' }}>
+        <DataState
+          state={products}
+          empty={{
+            icon: Package,
+            title: q ? 'No products match your search' : 'No products yet',
+            action: !q && canEdit ? <Button icon={Plus} onClick={() => setProductOpen(true)}>New product</Button> : undefined,
+          }}
+        >
           {(rows) => (
-            <>
-              <Table head={['SKU', 'Name', 'Category', 'Unit price', 'In stock', 'Reorder at', 'Status']}>
-                {rows.map((p) => {
-                  const qty = totalStock(p);
-                  return (
-                    <tr key={p.id}>
-                      <Td className="font-mono text-xs">{p.sku}</Td>
-                      <Td className="font-semibold">{p.name}</Td>
-                      <Td>{p.category ?? '—'}</Td>
-                      <Td>{money(p.unitPrice)}</Td>
-                      <Td>
-                        <span className="font-semibold">{qty}</span>
-                        {p.stockLevels.length > 1 && <span className="block text-xs text-slate-400">{p.stockLevels.map((l) => `${l.warehouse.name}: ${l.quantity}`).join(' · ')}</span>}
-                      </Td>
-                      <Td>{p.reorderLevel}</Td>
-                      <Td>{qty <= p.reorderLevel ? <Badge tone="bad">Low stock</Badge> : <Badge tone="good">OK</Badge>}</Td>
-                    </tr>
-                  );
-                })}
-              </Table>
-              <Pager meta={products.meta} onPage={setPage} />
-            </>
+            <DataTable
+              caption="Products"
+              columns={columns}
+              rows={rows}
+              rowKey={(p) => p.id}
+              sort={sort}
+              onSortChange={(s) => { setSort(s); setPage(1); }}
+              footer={<Pagination meta={products.meta} onPage={setPage} noun="products" />}
+            />
           )}
         </DataState>
       </Card>
-      <MovementModal open={moveOpen} onClose={() => setMoveOpen(false)} onSaved={products.reload} />
-      <ProductModal open={productOpen} onClose={() => setProductOpen(false)} onSaved={products.reload} />
-    </div>
+      <Modal title="Record stock movement" description="Receive, issue or correct stock in one warehouse." open={moveOpen} onClose={() => setMoveOpen(false)}>
+        <MovementForm onDone={() => { setMoveOpen(false); products.reload(); }} onCancel={() => setMoveOpen(false)} />
+      </Modal>
+      <Modal title="New product" open={productOpen} onClose={() => setProductOpen(false)}>
+        <ProductForm onDone={() => { setProductOpen(false); products.reload(); }} onCancel={() => setProductOpen(false)} />
+      </Modal>
+    </>
   );
 }
 
-function MovementModal({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
-  const products = useApi<Product[]>(open ? '/inventory/products?limit=100&sort=sku&order=asc' : null);
-  const warehouses = useApi<Warehouse[]>(open ? '/inventory/warehouses' : null);
-  const blank = { productId: '', warehouseId: '', type: 'OUT' as StockMovementType, quantity: '', note: '' };
-  const [form, setForm] = useState(blank);
+function MovementForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
+  const products = useApi<Product[]>('/inventory/products?limit=100&sort=sku&order=asc');
+  const warehouses = useApi<Warehouse[]>('/inventory/warehouses');
+  const [form, setForm] = useState({ productId: '', warehouseId: '', type: 'OUT' as StockMovementType, quantity: '', note: '' });
+  const product = products.data?.find((p) => p.id === form.productId);
+  const warehouseName = warehouses.data?.find((w) => w.id === form.warehouseId)?.name;
+  const inWarehouse = warehouseName ? product?.stockLevels.find((l) => l.warehouse.name === warehouseName)?.quantity ?? (product ? 0 : undefined) : undefined;
   const save = useMutation(async () => {
     await api.post('/inventory/stock/movement', {
       productId: form.productId, warehouseId: form.warehouseId, type: form.type,
       quantity: Number(form.quantity), ...(form.note && { note: form.note }),
     });
-    onSaved();
-    onClose();
-    setForm(blank);
-  });
+    onDone();
+  }, { success: 'Stock movement recorded' });
   return (
-    <Modal title="Record stock movement" open={open} onClose={onClose}>
-      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void save.run(); }}>
-        <Field label="Product">
-          <Select required value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })}>
-            <option value="">Select…</option>
-            {products.data?.map((p) => <option key={p.id} value={p.id}>{p.sku} · {p.name} ({totalStock(p)} in stock)</option>)}
+    <Form onSubmit={save.run} errors={save.fieldErrors} error={save.error}>
+      <Field label="Product" name="productId" required>
+        <Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })}>
+          <option value="">{products.loading ? 'Loading products…' : 'Select a product…'}</option>
+          {products.data?.map((p) => <option key={p.id} value={p.id}>{p.sku} · {p.name}</option>)}
+        </Select>
+      </Field>
+      <Field label="Warehouse" name="warehouseId" required hint={inWarehouse !== undefined ? `${inWarehouse} currently in this warehouse` : undefined}>
+        <Select value={form.warehouseId} onChange={(e) => setForm({ ...form, warehouseId: e.target.value })}>
+          <option value="">Select a warehouse…</option>
+          {warehouses.data?.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+        </Select>
+      </Field>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Movement" name="type">
+          <Select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as StockMovementType })}>
+            <option value="IN">Receive (in)</option>
+            <option value="OUT">Issue (out)</option>
+            <option value="ADJUSTMENT">Adjustment (±)</option>
           </Select>
         </Field>
-        <Field label="Warehouse">
-          <Select required value={form.warehouseId} onChange={(e) => setForm({ ...form, warehouseId: e.target.value })}>
-            <option value="">Select…</option>
-            {warehouses.data?.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-          </Select>
+        <Field label="Quantity" name="quantity" required hint={form.type === 'ADJUSTMENT' ? 'Negative to reduce stock' : undefined}>
+          <Input type="number" inputMode="numeric" step="1" min={form.type === 'ADJUSTMENT' ? undefined : 1} value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Type">
-            <Select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as StockMovementType })}>
-              <option value="IN">IN (receive)</option>
-              <option value="OUT">OUT (issue)</option>
-              <option value="ADJUSTMENT">Adjustment (±)</option>
-            </Select>
-          </Field>
-          <Field label={form.type === 'ADJUSTMENT' ? 'Quantity (+/−)' : 'Quantity'}>
-            <Input required type="number" step="1" min={form.type === 'ADJUSTMENT' ? undefined : 1} value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
-          </Field>
-        </div>
-        <Field label="Note"><Input maxLength={1000} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field>
-        <InlineError message={save.error} />
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="submit" disabled={save.pending}>{save.pending ? 'Saving…' : 'Record'}</Button>
-        </div>
-      </form>
-    </Modal>
+      </div>
+      <Field label="Note" name="note" optional><Textarea maxLength={1000} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field>
+      <FormActions>
+        <Button variant="secondary" onClick={onCancel}>Cancel</Button>
+        <Button type="submit" loading={save.pending}>Record movement</Button>
+      </FormActions>
+    </Form>
   );
 }
 
-function ProductModal({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
-  const blank = { sku: '', name: '', category: '', unitPrice: '', reorderLevel: '10' };
-  const [form, setForm] = useState(blank);
+function ProductForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
+  const [form, setForm] = useState({ sku: '', name: '', category: '', unitPrice: '', reorderLevel: '10' });
+  const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value });
   const save = useMutation(async () => {
     await api.post('/inventory/products', {
       sku: form.sku, name: form.name, unitPrice: form.unitPrice, reorderLevel: Number(form.reorderLevel),
       ...(form.category && { category: form.category }),
     });
-    onSaved();
-    onClose();
-    setForm(blank);
-  });
+    onDone();
+  }, { success: `Product ${form.sku} created` });
   return (
-    <Modal title="New product" open={open} onClose={onClose}>
-      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void save.run(); }}>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="SKU"><Input required value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} /></Field>
-          <Field label="Category"><Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} /></Field>
-        </div>
-        <Field label="Name"><Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Unit price"><Input required type="number" min="0.01" step="0.01" value={form.unitPrice} onChange={(e) => setForm({ ...form, unitPrice: e.target.value })} /></Field>
-          <Field label="Reorder level"><Input required type="number" min="0" step="1" value={form.reorderLevel} onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })} /></Field>
-        </div>
-        <InlineError message={save.error} />
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="submit" disabled={save.pending}>{save.pending ? 'Saving…' : 'Create product'}</Button>
-        </div>
-      </form>
-    </Modal>
+    <Form onSubmit={save.run} errors={save.fieldErrors} error={save.error}>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="SKU" name="sku" required><Input autoCapitalize="characters" value={form.sku} onChange={set('sku')} placeholder="SKU-1010" /></Field>
+        <Field label="Category" name="category" optional><Input value={form.category} onChange={set('category')} /></Field>
+      </div>
+      <Field label="Name" name="name" required><Input value={form.name} onChange={set('name')} /></Field>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Unit price" name="unitPrice" required>
+          <Input type="number" inputMode="decimal" min="0.01" step="0.01" prefix={CURRENCY_SYMBOL} value={form.unitPrice} onChange={set('unitPrice')} />
+        </Field>
+        <Field label="Reorder level" name="reorderLevel" required hint="Alert when stock falls to this">
+          <Input type="number" inputMode="numeric" min="0" step="1" value={form.reorderLevel} onChange={set('reorderLevel')} />
+        </Field>
+      </div>
+      <FormActions>
+        <Button variant="secondary" onClick={onCancel}>Cancel</Button>
+        <Button type="submit" loading={save.pending}>Create product</Button>
+      </FormActions>
+    </Form>
   );
 }
 
@@ -194,79 +222,101 @@ function ProductModal({ open, onClose, onSaved }: { open: boolean; onClose: () =
 
 function OrdersTab() {
   const user = useAuthUser();
+  const confirm = useConfirm();
   const orders = useApi<PurchaseOrder[]>('/purchases/orders');
   const [open, setOpen] = useState(false);
-  const act = useMutation(async (id: string, action: 'approve' | 'receive' | 'cancel') => {
-    await api.patch(`/purchases/orders/${id}/${action}`, {});
-    orders.reload();
-  });
   const canAct = can(user, 'INVENTORY');
+  const act = useMutation(async (po: PurchaseOrder, action: 'approve' | 'receive' | 'cancel') => {
+    await api.patch(`/purchases/orders/${po.id}/${action}`, {});
+    orders.reload();
+    return { approve: 'Purchase order approved', receive: 'Purchase order marked as received', cancel: 'Purchase order cancelled' }[action];
+  }, { success: (m) => m, errorToast: true });
+
+  const cancel = async (po: PurchaseOrder) => {
+    const ok = await confirm({
+      title: 'Cancel this purchase order?',
+      message: `The ${money(po.total)} order to ${po.supplier.name} will be cancelled. This can't be undone.`,
+      confirmLabel: 'Cancel order',
+      tone: 'danger',
+    });
+    if (ok) await act.run(po, 'cancel');
+  };
+
+  const columns: Column<PurchaseOrder>[] = [
+    { key: 'supplier', header: 'Supplier', primary: true, sortValue: (p) => p.supplier.name, cell: (p) => <span className="font-medium">{p.supplier.name}</span> },
+    { key: 'created', header: 'Created', sortValue: (p) => p.createdAt, cell: (p) => date(p.createdAt), className: 'whitespace-nowrap' },
+    { key: 'description', header: 'Description', cell: (p) => <span className="text-fg-muted">{p.description ?? '—'}</span> },
+    { key: 'total', header: 'Total', numeric: true, sortValue: (p) => Number(p.total), cell: (p) => <span className="font-medium">{money(p.total)}</span> },
+    { key: 'status', header: 'Status', sortValue: (p) => p.status, cell: (p) => <Badge>{p.status}</Badge> },
+    ...(canAct ? [{
+      key: 'actions', header: <span className="sr-only">Actions</span>, align: 'right' as const, mobileLabel: '',
+      cell: (p: PurchaseOrder) => (
+        <div className="flex justify-end gap-2">
+          {(p.status === 'DRAFT' || p.status === 'ISSUED') && <Button size="sm" variant="ghost" disabled={act.pending} onClick={() => void cancel(p)}>Cancel</Button>}
+          {p.status === 'DRAFT' && <Button size="sm" disabled={act.pending} onClick={() => void act.run(p, 'approve')}>Approve</Button>}
+          {p.status === 'ISSUED' && <Button size="sm" disabled={act.pending} onClick={() => void act.run(p, 'receive')}>Mark received</Button>}
+        </div>
+      ),
+    }] : []),
+  ];
+
   return (
-    <Card title="Purchase orders" actions={canAct && <Button onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> New PO</Button>}>
-      <InlineError message={act.error} />
-      <DataState state={orders} empty={{ title: 'No purchase orders yet' }}>
+    <Card title="Purchase orders" flush actions={canAct && <Button icon={Plus} onClick={() => setOpen(true)}>New purchase order</Button>}>
+      <DataState
+        state={orders}
+        empty={{ icon: ShoppingCart, title: 'No purchase orders yet', action: canAct ? <Button icon={Plus} onClick={() => setOpen(true)}>New purchase order</Button> : undefined }}
+      >
         {(rows) => (
-          <Table head={['Created', 'Supplier', 'Description', 'Total', 'Status', '']}>
-            {rows.map((po) => (
-              <tr key={po.id}>
-                <Td>{date(po.createdAt)}</Td>
-                <Td className="font-semibold">{po.supplier.name}</Td>
-                <Td className="text-slate-500">{po.description ?? '—'}</Td>
-                <Td className="font-semibold">{money(po.total)}</Td>
-                <Td><Badge>{po.status}</Badge></Td>
-                <Td>
-                  {canAct && (
-                    <div className="flex gap-1">
-                      {po.status === 'DRAFT' && <Button size="sm" disabled={act.pending} onClick={() => void act.run(po.id, 'approve')}>Approve</Button>}
-                      {po.status === 'ISSUED' && <Button size="sm" disabled={act.pending} onClick={() => void act.run(po.id, 'receive')}>Mark received</Button>}
-                      {(po.status === 'DRAFT' || po.status === 'ISSUED') && <Button size="sm" variant="secondary" disabled={act.pending} onClick={() => void act.run(po.id, 'cancel')}>Cancel</Button>}
-                    </div>
-                  )}
-                </Td>
-              </tr>
-            ))}
-          </Table>
+          <DataTable
+            caption="Purchase orders"
+            columns={columns}
+            rows={rows}
+            rowKey={(p) => p.id}
+            defaultSort={{ key: 'created', order: 'desc' }}
+            footer={<p className="border-t border-line px-4 py-3 text-xs text-fg-subtle sm:px-5">Receiving an order doesn&apos;t change stock yet (orders have no line items) — record an incoming movement in Inventory.</p>}
+          />
         )}
       </DataState>
-      <POModal open={open} onClose={() => setOpen(false)} onSaved={orders.reload} />
+      <Modal title="New purchase order" description="Orders start as drafts and need approval." open={open} onClose={() => setOpen(false)}>
+        <POForm onDone={() => { setOpen(false); orders.reload(); }} onCancel={() => setOpen(false)} />
+      </Modal>
     </Card>
   );
 }
 
-function POModal({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
-  const suppliers = useApi<Supplier[]>(open ? '/purchases/suppliers' : null);
-  const blank = { supplierId: '', description: '', subtotal: '', tax: '' };
-  const [form, setForm] = useState(blank);
+function POForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
+  const suppliers = useApi<Supplier[]>('/purchases/suppliers');
+  const [form, setForm] = useState({ supplierId: '', description: '', subtotal: '', tax: '' });
+  const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value });
   const save = useMutation(async () => {
     await api.post('/purchases/orders', {
       supplierId: form.supplierId, subtotal: form.subtotal, tax: form.tax || '0',
       ...(form.description && { description: form.description }),
     });
-    onSaved();
-    onClose();
-    setForm(blank);
-  });
+    onDone();
+  }, { success: 'Draft purchase order created' });
   return (
-    <Modal title="New purchase order" open={open} onClose={onClose}>
-      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void save.run(); }}>
-        <Field label="Supplier">
-          <Select required value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value })}>
-            <option value="">Select…</option>
-            {suppliers.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </Select>
+    <Form onSubmit={save.run} errors={save.fieldErrors} error={save.error}>
+      <Field label="Supplier" name="supplierId" required>
+        <Select value={form.supplierId} onChange={set('supplierId')}>
+          <option value="">{suppliers.loading ? 'Loading suppliers…' : 'Select a supplier…'}</option>
+          {suppliers.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </Select>
+      </Field>
+      <Field label="Description" name="description" optional><Textarea maxLength={1000} value={form.description} onChange={set('description')} /></Field>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Subtotal" name="subtotal" required>
+          <Input type="number" inputMode="decimal" min="0" step="0.01" prefix={CURRENCY_SYMBOL} value={form.subtotal} onChange={set('subtotal')} />
         </Field>
-        <Field label="Description"><Input maxLength={1000} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Subtotal"><Input required type="number" min="0" step="0.01" value={form.subtotal} onChange={(e) => setForm({ ...form, subtotal: e.target.value })} /></Field>
-          <Field label="Tax"><Input type="number" min="0" step="0.01" value={form.tax} onChange={(e) => setForm({ ...form, tax: e.target.value })} /></Field>
-        </div>
-        <InlineError message={save.error} />
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="submit" disabled={save.pending}>{save.pending ? 'Saving…' : 'Create draft'}</Button>
-        </div>
-      </form>
-    </Modal>
+        <Field label="Tax" name="tax" optional>
+          <Input type="number" inputMode="decimal" min="0" step="0.01" prefix={CURRENCY_SYMBOL} value={form.tax} onChange={set('tax')} />
+        </Field>
+      </div>
+      <FormActions>
+        <Button variant="secondary" onClick={onCancel}>Cancel</Button>
+        <Button type="submit" loading={save.pending}>Create draft</Button>
+      </FormActions>
+    </Form>
   );
 }
 
@@ -275,8 +325,30 @@ function POModal({ open, onClose, onSaved }: { open: boolean; onClose: () => voi
 function VendorsTab() {
   const user = useAuthUser();
   const suppliers = useApi<Supplier[]>('/purchases/suppliers');
+  const canEdit = can(user, 'INVENTORY');
+  const columns: Column<Supplier>[] = [
+    { key: 'name', header: 'Supplier', primary: true, sortValue: (s) => s.name, cell: (s) => <span className="font-medium">{s.name}</span> },
+    { key: 'email', header: 'Email', cell: (s) => (s.email ? <a href={`mailto:${s.email}`} className="text-fg hover:underline">{s.email}</a> : '—') },
+    { key: 'phone', header: 'Phone', cell: (s) => (s.phone ? <a href={`tel:${s.phone}`} className="hover:underline">{s.phone}</a> : '—') },
+    { key: 'lead', header: 'Lead time', numeric: true, sortValue: (s) => s.leadTimeDays, cell: (s) => (s.leadTimeDays != null ? `${s.leadTimeDays} days` : '—') },
+    { key: 'terms', header: 'Payment terms', cell: (s) => s.paymentTerms ?? '—' },
+  ];
+  return (
+    <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+      <Card title="Suppliers" flush className={canEdit ? 'xl:col-span-2' : 'xl:col-span-3'}>
+        <DataState state={suppliers} empty={{ icon: Truck, title: 'No suppliers yet' }}>
+          {(rows) => <DataTable caption="Suppliers" columns={columns} rows={rows} rowKey={(s) => s.id} defaultSort={{ key: 'name', order: 'asc' }} />}
+        </DataState>
+      </Card>
+      {canEdit && <SupplierForm onSaved={suppliers.reload} />}
+    </div>
+  );
+}
+
+function SupplierForm({ onSaved }: { onSaved: () => void }) {
   const blank = { name: '', email: '', phone: '', leadTimeDays: '', paymentTerms: '' };
   const [form, setForm] = useState(blank);
+  const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value });
   const save = useMutation(async () => {
     await api.post('/purchases/suppliers', {
       name: form.name,
@@ -286,50 +358,29 @@ function VendorsTab() {
       ...(form.paymentTerms && { paymentTerms: form.paymentTerms }),
     });
     setForm(blank);
-    suppliers.reload();
-  });
+    onSaved();
+  }, { success: 'Supplier added' });
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-      <Card title="Suppliers" className="lg:col-span-2">
-        <DataState state={suppliers} empty={{ title: 'No suppliers yet' }}>
-          {(rows) => (
-            <Table head={['Name', 'Email', 'Phone', 'Lead time', 'Terms']}>
-              {rows.map((s) => (
-                <tr key={s.id}>
-                  <Td className="font-semibold">{s.name}</Td>
-                  <Td>{s.email ?? '—'}</Td>
-                  <Td>{s.phone ?? '—'}</Td>
-                  <Td>{s.leadTimeDays != null ? `${s.leadTimeDays} days` : '—'}</Td>
-                  <Td>{s.paymentTerms ?? '—'}</Td>
-                </tr>
-              ))}
-            </Table>
-          )}
-        </DataState>
-      </Card>
-      {can(user, 'INVENTORY') && (
-        <Card title="Add supplier">
-          <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void save.run(); }}>
-            <Field label="Name"><Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-            <Field label="Email"><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
-            <Field label="Phone"><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Lead time (days)"><Input type="number" min="0" max="365" value={form.leadTimeDays} onChange={(e) => setForm({ ...form, leadTimeDays: e.target.value })} /></Field>
-              <Field label="Payment terms"><Input value={form.paymentTerms} onChange={(e) => setForm({ ...form, paymentTerms: e.target.value })} /></Field>
-            </div>
-            <InlineError message={save.error} />
-            <Button type="submit" disabled={save.pending} className="w-full">{save.pending ? 'Saving…' : 'Add supplier'}</Button>
-          </form>
-        </Card>
-      )}
-    </div>
+    <Card title="Add supplier" className="self-start">
+      <Form onSubmit={save.run} errors={save.fieldErrors} error={save.error}>
+        <Field label="Name" name="name" required><Input value={form.name} onChange={set('name')} /></Field>
+        <Field label="Email" name="email" optional><Input type="email" inputMode="email" value={form.email} onChange={set('email')} /></Field>
+        <Field label="Phone" name="phone" optional><Input type="tel" inputMode="tel" value={form.phone} onChange={set('phone')} /></Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Lead time (days)" name="leadTimeDays" optional><Input type="number" inputMode="numeric" min="0" max="365" value={form.leadTimeDays} onChange={set('leadTimeDays')} /></Field>
+          <Field label="Payment terms" name="paymentTerms" optional><Input value={form.paymentTerms} onChange={set('paymentTerms')} placeholder="Net 30" /></Field>
+        </div>
+        <Button type="submit" loading={save.pending} className="w-full">Add supplier</Button>
+      </Form>
+    </Card>
   );
 }
 
-// ── AI forecast ───────────────────────────────────────────────────────────────
+// ── Demand forecast ───────────────────────────────────────────────────────────
+
+const MODEL_LABEL: Record<string, string> = { prophet: 'Prophet', holt: 'Holt (damped trend)', moving_average: 'Moving average' };
 
 function ForecastTab() {
-  const user = useAuthUser();
   const [result, setResult] = useState<AIForecastResponse | null>(null);
   const [selectedSku, setSelectedSku] = useState('');
   const run = useMutation(async () => {
@@ -339,62 +390,73 @@ function ForecastTab() {
     setSelectedSku((s) => (data.predictions.some((p) => p.sku === s) ? s : data.predictions[0]?.sku ?? ''));
   });
   const selected = useMemo(() => result?.predictions.find((p) => p.sku === selectedSku), [result, selectedSku]);
+  type Pred = AIForecastResponse['predictions'][number];
 
-  if (!can(user, 'INVENTORY')) {
-    return <Card><ErrorState status={403} message="" /></Card>;
-  }
+  const columns: Column<Pred>[] = [
+    { key: 'sku', header: 'Product', primary: true, sortValue: (p) => p.sku, cell: (p) => <><span className="block font-medium">{p.name ?? p.sku}</span><span className="block font-mono text-xs text-fg-subtle">{p.sku}</span></> },
+    { key: 'stock', header: 'In stock', numeric: true, sortValue: (p) => p.currentStock, cell: (p) => num(p.currentStock) },
+    { key: 'demand', header: '30-day demand', numeric: true, sortValue: (p) => p.predictedDemand, cell: (p) => <span className="font-medium">{num(p.predictedDemand)}</span> },
+    { key: 'risk', header: 'Stock-out risk', sortValue: (p) => ({ High: 0, Medium: 1, Low: 2 })[p.stockoutRisk], cell: (p) => <Badge>{p.stockoutRisk}</Badge> },
+    { key: 'reorder', header: 'Reorder', numeric: true, sortValue: (p) => p.recommendedReorder, cell: (p) => (p.recommendedReorder ? num(p.recommendedReorder) : '—') },
+    { key: 'model', header: 'Model', cell: (p) => <span className="text-fg-muted">{MODEL_LABEL[p.model] ?? titleCase(p.model)}</span> },
+    { key: 'conf', header: 'Confidence', numeric: true, sortValue: (p) => p.confidenceScore, cell: (p) => `${Math.round(p.confidenceScore * 100)}%` },
+  ];
+
+  const series = [
+    { key: 'actual', label: 'Issued (actual)', slot: SLOT.actual },
+    { key: 'pred', label: 'Forecast', slot: SLOT.forecast, dashed: true },
+  ];
 
   return (
-    <div className="space-y-6">
+    <>
       <Card
         title="30-day demand forecast"
-        actions={<Button onClick={() => void run.run()} disabled={run.pending}><BrainCircuit className="h-4 w-4" /> {run.pending ? 'Forecasting…' : result ? 'Refresh forecast' : 'Run forecast'}</Button>}
+        description="Fits a model per product on the last 180 days of stock issued. Prophet is used when there is enough regular history; otherwise a damped-trend or moving-average model."
+        actions={
+          <Button icon={BrainCircuit} loading={run.pending} onClick={() => void run.run()}>
+            {run.pending ? 'Forecasting…' : result ? 'Refresh forecast' : 'Run forecast'}
+          </Button>
+        }
       >
-        <p className="text-sm text-slate-500">
-          Fits a model per SKU on the last 180 days of stock issued (OUT movements). Prophet is used when there is enough history, otherwise a damped-trend Holt model.
-        </p>
-        <div className="mt-2"><InlineError message={run.error} /></div>
+        {run.error && <Alert tone="danger" title="The forecast could not be generated">{run.error}</Alert>}
+        {!result && !run.pending && !run.error && (
+          <EmptyState compact icon={BrainCircuit} title="No forecast yet" description="Run the forecast to see predicted demand and reorder suggestions." />
+        )}
+        {run.pending && !result && <BlockSkeleton className="h-40" />}
+        {result && <p className="text-sm text-fg-muted">{result.predictions.length} products · {result.cached ? 'served from cache' : 'freshly computed'}</p>}
       </Card>
 
-      {run.pending && !result && <Spinner label="Fitting models…" />}
       {result && result.predictions.length === 0 && <Card><EmptyState title="No active products to forecast" /></Card>}
       {result && result.predictions.length > 0 && (
         <>
-          <Card title="Predictions">
-            <Table head={['SKU', 'Product', 'In stock', 'Predicted demand', 'Risk', 'Reorder', 'Model', 'Confidence']}>
-              {result.predictions.map((p) => (
-                <tr key={p.sku} className={p.sku === selectedSku ? 'bg-orange-50/50 dark:bg-slate-700/40' : undefined} onClick={() => setSelectedSku(p.sku)} style={{ cursor: 'pointer' }}>
-                  <Td className="font-mono text-xs">{p.sku}</Td>
-                  <Td>{p.name ?? '—'}</Td>
-                  <Td>{p.currentStock}</Td>
-                  <Td className="font-semibold">{p.predictedDemand}</Td>
-                  <Td><Badge>{p.stockoutRisk}</Badge></Td>
-                  <Td>{p.recommendedReorder || '—'}</Td>
-                  <Td>{titleCase(p.model)}</Td>
-                  <Td>{Math.round(p.confidenceScore * 100)}%</Td>
-                </tr>
-              ))}
-            </Table>
+          <Card title="Predictions" description="Select a product to see its history and forecast." flush>
+            <DataTable
+              caption="Demand predictions"
+              columns={columns}
+              rows={result.predictions}
+              rowKey={(p) => p.sku}
+              defaultSort={{ key: 'risk', order: 'asc' }}
+              onRowClick={(p) => setSelectedSku(p.sku)}
+              selectedKey={selectedSku}
+            />
           </Card>
           {selected && (
-            <Card title={`${selected.sku} · actual vs forecast`}>
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={selected.timeSeries}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                    <XAxis dataKey="day" tick={{ fill: '#94a3b8', fontSize: 11 }} interval={4} />
-                    <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} width={40} />
-                    <Tooltip />
-                    <Legend />
-                    <Line type="monotone" dataKey="actual" name="Issued (actual)" stroke="#6366f1" strokeWidth={2} dot={false} connectNulls={false} />
-                    <Line type="monotone" dataKey="pred" name="Forecast" stroke="#ff5a00" strokeWidth={2} strokeDasharray="5 4" dot={false} connectNulls={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+            <Card title={`${selected.name ?? selected.sku} · actual vs forecast`} description="Units issued per day: last 15 days and the next 30.">
+              <ChartLegend series={series} />
+              <LineTrend
+                data={selected.timeSeries}
+                series={series}
+                xKey="day"
+                format={(v) => `${dec(v)} units`}
+                axisFormat={(v) => String(Math.round(v))}
+                xInterval={6}
+                height={280}
+                ariaLabel={`Daily units issued and 30-day forecast for ${selected.sku}`}
+              />
             </Card>
           )}
         </>
       )}
-    </div>
+    </>
   );
 }

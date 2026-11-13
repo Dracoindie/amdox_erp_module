@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, requireRole } from '../middleware/auth.middleware';
 import { endpoint, idParams, uuid } from '../middleware/validate';
-import { ROLES } from '../middleware/roles';
+import { READ, ROLES } from '../middleware/roles';
 import { ok, created, listQuery, paging, buildMeta } from '../utils/response';
 import { prisma } from '../utils/prisma';
 import { HttpError, notFound } from '../utils/httpError';
@@ -26,7 +26,7 @@ const listSchema = listQuery(['createdAt', 'total', 'number']).extend({
   customerId: uuid.optional(),
 });
 
-router.get('/', ...endpoint({ query: listSchema }, async ({ query }, _req, res) => {
+router.get('/', requireRole(...READ.SALES_ORDERS), ...endpoint({ query: listSchema }, async ({ query }, _req, res) => {
   const where = {
     ...(query.status && { status: query.status }),
     ...(query.customerId && { customerId: query.customerId }),

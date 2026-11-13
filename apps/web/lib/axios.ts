@@ -80,13 +80,34 @@ api.interceptors.response.use(undefined, async (error: AxiosError) => {
     original.headers.set('Authorization', `Bearer ${token}`);
     return api(original);
   } catch (refreshError) {
-    clearSession();
-    if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-      window.location.assign('/login');
+    // Only a rejected refresh means "signed out". A network error or 5xx while
+    // refreshing is an outage: keep the session and let the page show the error.
+    const status = (refreshError as AxiosError)?.response?.status;
+    if (status === 401 || status === 403) {
+      clearSession();
+      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+        const next = encodeURIComponent(window.location.pathname + window.location.search);
+        window.location.assign(`/login?next=${next}&expired=1`);
+      }
     }
     return Promise.reject(refreshError);
   }
 });
+
+/** Field errors from a 422 response ({ errors: { fieldErrors: { name: [msg] } } }). */
+export function apiFieldErrors(err: unknown): Record<string, string> {
+  const e = err as AxiosError<{ errors?: { fieldErrors?: Record<string, string[] | undefined> } }>;
+  const fields = e?.response?.status === 422 ? e.response.data?.errors?.fieldErrors : undefined;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(fields ?? {})) if (v?.[0]) out[k] = v[0];
+  return out;
+}
+
+/** True when the request never got a response (API down, offline, CORS). */
+export function isNetworkError(err: unknown) {
+  const e = err as AxiosError;
+  return !!e?.isAxiosError && !e.response;
+}
 
 /** Pulls a readable message out of an API error. */
 export function apiErrorMessage(err: unknown, fallback = 'Something went wrong'): string {

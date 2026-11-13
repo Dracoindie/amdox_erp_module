@@ -1,51 +1,59 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { BarChart3, FileSpreadsheet, Download } from 'lucide-react';
-import {
-  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
-} from 'recharts';
+import { BarChart3, Download, FileSpreadsheet } from 'lucide-react';
 import type { BISummary } from '@repo/types';
 import { useApi } from '../../../lib/useApi';
-import { money, moneyCompact, monthLabel, toNumber } from '../../../lib/format';
-import { Button, Card, DataState, EmptyState, Field, PageHeader, Select, StatCard, Table, Tabs, Td } from '../../../components/ui';
+import { isCurrentMonth, money, moneyCompact, monthLabel, pct, toNumber } from '../../../lib/format';
+import { BarList, ChartDataTable, ChartLegend, GroupedBars, LineTrend, SLOT } from '../../../components/charts';
+import {
+  BlockSkeleton, Button, Card, DataState, DataTable, EmptyState, Field, PageHeader, Select, StatCard, StatsSkeleton,
+  TabPanel, Tabs, useTabParam, useToast, type Column,
+} from '../../../components/ui';
 
-type Tab = 'dashboards' | 'builder';
 const TABS = [
   { id: 'dashboards', label: 'Dashboards', icon: BarChart3 },
-  { id: 'builder', label: 'Report Builder', icon: FileSpreadsheet },
+  { id: 'builder', label: 'Report builder', icon: FileSpreadsheet },
 ] as const;
 
-const COLORS = ['#6366f1', '#ec4899', '#14b8a6', '#f59e0b', '#3b82f6', '#ff5a00', '#10b981'];
 const RANGES = [3, 6, 12, 24] as const;
 
 export default function BIPage() {
-  const [tab, setTab] = useState<Tab>('dashboards');
+  const [tab, setTab] = useTabParam(TABS);
   const [months, setMonths] = useState<number>(6);
   const summary = useApi<BISummary>(`/bi/summary?months=${months}`);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Business Intelligence"
-        subtitle="Computed live from invoices, expenses and payslips"
+        title="Analytics"
+        description="Computed live from invoices, expenses and payslips."
         actions={
-          <Select value={months} onChange={(e) => setMonths(Number(e.target.value))} aria-label="Range" className="w-40">
-            {RANGES.map((r) => <option key={r} value={r}>Last {r} months</option>)}
-          </Select>
+          <div className="w-full sm:w-44">
+            <Select value={months} onChange={(e) => setMonths(Number(e.target.value))} aria-label="Date range">
+              {RANGES.map((r) => <option key={r} value={r}>Last {r} months</option>)}
+            </Select>
+          </div>
         }
       />
-      <Tabs tabs={TABS} active={tab} onChange={setTab} />
-      <DataState state={summary} isEmpty={() => false}>
-        {(s) => (tab === 'dashboards' ? <Dashboards s={s} /> : <ReportBuilder s={s} />)}
-      </DataState>
+      <Tabs tabs={TABS} active={tab} onChange={setTab} label="Analytics sections" />
+      <TabPanel id={tab}>
+        <DataState
+          state={summary}
+          isEmpty={() => false}
+          skeleton={<div className="space-y-6"><StatsSkeleton /><Card><BlockSkeleton /></Card></div>}
+        >
+          {(s) => (tab === 'dashboards' ? <Dashboards s={s} /> : <ReportBuilder s={s} />)}
+        </DataState>
+      </TabPanel>
     </div>
   );
 }
 
-function chartRows(s: BISummary) {
+function rowsOf(s: BISummary) {
   return s.months.map((m) => ({
-    month: monthLabel(m.month, true),
+    key: m.month,
+    month: isCurrentMonth(m.month) ? `${monthLabel(m.month, true)} (to date)` : monthLabel(m.month, true),
     revenue: toNumber(m.revenue),
     collected: toNumber(m.collected),
     expenses: toNumber(m.expenses),
@@ -54,79 +62,97 @@ function chartRows(s: BISummary) {
   }));
 }
 
+const REVENUE_SERIES = [
+  { key: 'revenue', label: 'Invoiced', slot: SLOT.revenue },
+  { key: 'collected', label: 'Collected', slot: SLOT.collected },
+];
+const PROFIT_SERIES = [
+  { key: 'revenue', label: 'Revenue', slot: SLOT.revenue },
+  { key: 'netProfit', label: 'Net profit', slot: SLOT.netProfit },
+];
+
 function Dashboards({ s }: { s: BISummary }) {
-  const rows = useMemo(() => chartRows(s), [s]);
-  const pie = s.expensesByCategory.map((c) => ({ name: c.category, value: toNumber(c.amount) }));
-  const margin = toNumber(s.totals.revenue) > 0 ? (toNumber(s.totals.netProfit) / toNumber(s.totals.revenue)) * 100 : null;
+  const rows = useMemo(() => rowsOf(s), [s]);
+  const revenue = toNumber(s.totals.revenue);
+  const net = toNumber(s.totals.netProfit);
+  const margin = revenue > 0 ? (net / revenue) * 100 : null;
+  const partial = rows.find((r) => isCurrentMonth(r.key));
+  const hasData = rows.some((r) => r.revenue || r.expenses || r.payroll || r.collected);
+  const costs = [...s.expensesByCategory].map((c) => ({ label: c.category, value: toNumber(c.amount) })).sort((a, b) => b.value - a.value);
+  const costTotal = costs.reduce((t, c) => t + c.value, 0);
+
+  if (!hasData) {
+    return <Card><EmptyState icon={BarChart3} title="No financial activity in this range" description="Pick a longer range, or create invoices and expenses first." /></Card>;
+  }
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Revenue" value={moneyCompact(s.totals.revenue)} hint={`Collected ${moneyCompact(s.totals.collected)}`} tone="brand" />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Revenue" value={moneyCompact(revenue)} hint={`${moneyCompact(s.totals.collected)} collected`} />
         <StatCard label="Expenses" value={moneyCompact(s.totals.expenses)} hint="Excluding rejected claims" />
-        <StatCard label="Payroll" value={moneyCompact(s.totals.payroll)} hint="Payslip gross" />
+        <StatCard label="Payroll" value={moneyCompact(s.totals.payroll)} hint="Gross pay on payslips" />
         <StatCard
           label="Net profit"
-          value={moneyCompact(s.totals.netProfit)}
-          hint={margin === null ? 'No revenue in range' : `${margin.toFixed(1)}% margin`}
-          tone={toNumber(s.totals.netProfit) >= 0 ? 'good' : 'bad'}
+          value={moneyCompact(net)}
+          hint={margin === null ? 'No revenue in range' : `${pct(margin)} margin`}
+          tone={margin === null ? 'neutral' : net >= 0 ? 'good' : 'bad'}
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card title="Revenue vs collected">
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={rows}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                <YAxis tickFormatter={(v) => moneyCompact(v)} tick={{ fill: '#94a3b8', fontSize: 11 }} width={60} />
-                <Tooltip formatter={(v: number) => money(v)} />
-                <Legend />
-                <Bar dataKey="revenue" name="Invoiced" fill="#ff5a00" radius={[6, 6, 0, 0]} />
-                <Bar dataKey="collected" name="Collected" fill="#10b981" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+        <Card title="Invoiced vs collected" description="Per month" className="xl:col-span-3">
+          <ChartLegend series={REVENUE_SERIES} note={partial ? 'Shaded: month in progress' : undefined} />
+          <GroupedBars
+            data={rows}
+            series={REVENUE_SERIES}
+            xKey="month"
+            format={money}
+            axisFormat={moneyCompact}
+            partialFrom={partial?.month}
+            ariaLabel="Bar chart of invoiced and collected revenue per month"
+          />
+          <ChartDataTable
+            caption="Invoiced and collected per month"
+            columns={[{ key: 'month', label: 'Month' }, { key: 'revenue', label: 'Invoiced', numeric: true }, { key: 'collected', label: 'Collected', numeric: true }]}
+            rows={rows.map((r) => ({ month: r.month, revenue: money(r.revenue), collected: money(r.collected) }))}
+          />
         </Card>
 
-        <Card title="Cost breakdown">
-          {pie.length === 0 ? <EmptyState title="No expenses or payroll in this range" /> : (
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={pie} dataKey="value" nameKey="name" innerRadius={55} outerRadius={90} paddingAngle={3}>
-                    {pie.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip formatter={(v: number) => money(v)} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
+        <Card title="Where the money goes" description={`${moneyCompact(costTotal)} in costs`} className="xl:col-span-2">
+          {costs.length === 0 ? <EmptyState compact title="No costs in this range" /> : (
+            <BarList
+              ariaLabel="Costs by category"
+              slot={SLOT.costs}
+              format={moneyCompact}
+              items={costs.map((c) => ({ ...c, hint: costTotal > 0 ? pct((c.value / costTotal) * 100) : undefined }))}
+            />
           )}
         </Card>
       </div>
 
-      <Card title="Net profit trend">
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={rows}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-              <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 12 }} />
-              <YAxis tickFormatter={(v) => moneyCompact(v)} tick={{ fill: '#94a3b8', fontSize: 11 }} width={60} />
-              <Tooltip formatter={(v: number) => money(v)} />
-              <Legend />
-              <Line type="monotone" dataKey="revenue" name="Revenue" stroke="#ff5a00" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="netProfit" name="Net profit" stroke="#6366f1" strokeWidth={2.5} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+      <Card title="Revenue and net profit" description="Per month">
+        <ChartLegend series={PROFIT_SERIES} note={partial ? 'Shaded: month in progress' : undefined} />
+        <LineTrend
+          data={rows}
+          series={PROFIT_SERIES}
+          xKey="month"
+          format={money}
+          axisFormat={moneyCompact}
+          partialFrom={partial?.month}
+          ariaLabel="Line chart of revenue and net profit per month"
+        />
+        <ChartDataTable
+          caption="Revenue and net profit per month"
+          columns={[{ key: 'month', label: 'Month' }, { key: 'revenue', label: 'Revenue', numeric: true }, { key: 'netProfit', label: 'Net profit', numeric: true }]}
+          rows={rows.map((r) => ({ month: r.month, revenue: money(r.revenue), netProfit: money(r.netProfit) }))}
+        />
       </Card>
     </div>
   );
 }
 
 type ReportType = 'sales' | 'profit' | 'expenses';
+type Row = Record<string, string>;
 
 const REPORTS: Record<ReportType, { label: string; columns: Array<{ key: string; label: string; money?: boolean }> }> = {
   sales: { label: 'Monthly sales', columns: [{ key: 'month', label: 'Month' }, { key: 'revenue', label: 'Invoiced', money: true }, { key: 'collected', label: 'Collected', money: true }] },
@@ -141,9 +167,10 @@ const REPORTS: Record<ReportType, { label: string; columns: Array<{ key: string;
 };
 
 function ReportBuilder({ s }: { s: BISummary }) {
+  const toast = useToast();
   const [type, setType] = useState<ReportType>('sales');
   const report = REPORTS[type];
-  const rows: Array<Record<string, string>> = type === 'expenses'
+  const rows: Row[] = type === 'expenses'
     ? s.expensesByCategory.map((c) => ({ category: c.category, amount: c.amount }))
     : s.months.map((m) => ({ ...m, month: monthLabel(m.month) }));
 
@@ -159,30 +186,36 @@ function ReportBuilder({ s }: { s: BISummary }) {
     a.download = `${type}-report-${s.from}-to-${s.to}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+    toast.success(`${report.label} exported (${rows.length} rows)`);
   };
+
+  const columns: Column<Row>[] = report.columns.map((c, i) => ({
+    key: c.key,
+    header: c.label,
+    primary: i === 0,
+    numeric: c.money,
+    sortValue: (r: Row) => (c.money ? toNumber(r[c.key]) : r[c.key]),
+    cell: (r: Row) => (c.money ? money(r[c.key]) : <span className="font-medium">{r[c.key]}</span>),
+  }));
 
   return (
     <Card
-      title={`${report.label} · ${monthLabel(s.from)} – ${monthLabel(s.to)}`}
+      title={report.label}
+      description={`${monthLabel(s.from)} – ${monthLabel(s.to)}`}
+      flush
       actions={
-        <div className="flex items-end gap-2">
-          <Field label="Report">
-            <Select value={type} onChange={(e) => setType(e.target.value as ReportType)} className="w-48">
+        <>
+          <Field label="Report" className="w-full sm:w-52 [&>label]:sr-only">
+            <Select value={type} onChange={(e) => setType(e.target.value as ReportType)}>
               {Object.entries(REPORTS).map(([k, r]) => <option key={k} value={k}>{r.label}</option>)}
             </Select>
           </Field>
-          <Button variant="secondary" onClick={exportCsv} disabled={rows.length === 0}><Download className="h-4 w-4" /> CSV</Button>
-        </div>
+          <Button variant="secondary" icon={Download} onClick={exportCsv} disabled={rows.length === 0}>Export CSV</Button>
+        </>
       }
     >
       {rows.length === 0 ? <EmptyState title="No data for this range" /> : (
-        <Table head={report.columns.map((c) => c.label)}>
-          {rows.map((r, i) => (
-            <tr key={i}>
-              {report.columns.map((c) => <Td key={c.key} className={c.money ? 'tabular-nums' : 'font-medium'}>{c.money ? money(r[c.key]) : r[c.key]}</Td>)}
-            </tr>
-          ))}
-        </Table>
+        <DataTable key={type} caption={report.label} columns={columns} rows={rows} rowKey={(r) => r.month ?? r.category ?? ''} />
       )}
     </Card>
   );

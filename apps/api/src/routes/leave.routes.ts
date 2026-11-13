@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, requireRole } from '../middleware/auth.middleware';
 import { endpoint, idParams, isoDate, uuid } from '../middleware/validate';
-import { ROLES, resolveActingEmployee, hasRole, ownEmployeeId } from '../middleware/roles';
+import { READ, ROLES, resolveActingEmployee, hasRole, ownEmployeeId } from '../middleware/roles';
 import { ok, created } from '../utils/response';
 import { prisma } from '../utils/prisma';
 import { HttpError, notFound } from '../utils/httpError';
@@ -27,9 +27,9 @@ const listSchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(50),
 }).strict();
 
-// HR/admins see all requests; everyone else sees only their own.
+// HR, admins and read-only auditors see all requests; everyone else only their own.
 router.get('/', ...endpoint({ query: listSchema }, async ({ query }, req, res) => {
-  const scope = hasRole(req, ROLES.HR) ? {} : { employeeId: (await ownEmployeeId(req)) ?? '__none__' };
+  const scope = hasRole(req, READ.PEOPLE_RECORDS) ? {} : { employeeId: (await ownEmployeeId(req)) ?? '__none__' };
   const leaves = await prisma.leaveRequest.findMany({
     where: { ...scope, ...(query.status && { status: query.status }) },
     orderBy: { createdAt: 'desc' },

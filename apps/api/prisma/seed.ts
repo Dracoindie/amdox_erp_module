@@ -6,6 +6,7 @@
 // seed can be re-run. Transactional history (6 months of invoices, expenses,
 // payroll, stock movements, ...) is generated once: it is skipped when invoices
 // already exist. A fixed-seed RNG keeps the numbers identical on every machine.
+// All amounts are Indian rupees: salaries ₹4.2–25 lakh a year, invoices with 18% GST.
 //
 // Passwords: SEED_ADMIN_PASSWORD (default Admin@1234) and SEED_DEMO_PASSWORD
 // (default Demo@1234). Change them for anything other than a local demo.
@@ -71,16 +72,16 @@ async function main() {
   }
 
   const employeeSpecs: Array<{ name: string; email: string; dept: string; title: string; salary: number; join: string; user?: string; status?: 'ACTIVE' | 'ONBOARDING' }> = [
-    { name: 'Asha Rao', email: 'admin@amdox.com', dept: 'Operations', title: 'COO', salary: 180000, join: '2022-02-01', user: 'admin@amdox.com' },
-    { name: 'Carol White', email: 'hr@amdox.com', dept: 'Human Resources', title: 'HR Manager', salary: 85000, join: '2023-06-01', user: 'hr@amdox.com' },
-    { name: 'Dev Mehta', email: 'finance@amdox.com', dept: 'Finance', title: 'Finance Manager', salary: 110000, join: '2023-01-09', user: 'finance@amdox.com' },
-    { name: 'Ivan Petrov', email: 'inventory@amdox.com', dept: 'Operations', title: 'Inventory Planner', salary: 72000, join: '2024-04-15', user: 'inventory@amdox.com' },
-    { name: 'Sara Kim', email: 'sales@amdox.com', dept: 'Sales', title: 'Account Executive', salary: 78000, join: '2024-02-19', user: 'sales@amdox.com' },
-    { name: 'Eli Brooks', email: 'employee@amdox.com', dept: 'Engineering', title: 'Software Engineer', salary: 98000, join: '2024-07-01', user: 'employee@amdox.com' },
-    { name: 'Alice Johnson', email: 'alice@amdox.com', dept: 'Engineering', title: 'Frontend Lead', salary: 120000, join: '2024-01-15' },
-    { name: 'Bob Smith', email: 'bob@amdox.com', dept: 'Engineering', title: 'Backend Developer', salary: 95000, join: '2024-03-01' },
-    { name: 'Nina Patel', email: 'nina@amdox.com', dept: 'Sales', title: 'Sales Associate', salary: 64000, join: '2025-01-06' },
-    { name: 'Omar Haddad', email: 'omar@amdox.com', dept: 'Engineering', title: 'QA Engineer', salary: 82000, join: '2025-09-01', status: 'ONBOARDING' },
+    { name: 'Asha Rao', email: 'admin@amdox.com', dept: 'Operations', title: 'COO', salary: 2500000, join: '2022-02-01', user: 'admin@amdox.com' },
+    { name: 'Carol White', email: 'hr@amdox.com', dept: 'Human Resources', title: 'HR Manager', salary: 1200000, join: '2023-06-01', user: 'hr@amdox.com' },
+    { name: 'Dev Mehta', email: 'finance@amdox.com', dept: 'Finance', title: 'Finance Manager', salary: 1600000, join: '2023-01-09', user: 'finance@amdox.com' },
+    { name: 'Ivan Petrov', email: 'inventory@amdox.com', dept: 'Operations', title: 'Inventory Planner', salary: 750000, join: '2024-04-15', user: 'inventory@amdox.com' },
+    { name: 'Sara Kim', email: 'sales@amdox.com', dept: 'Sales', title: 'Account Executive', salary: 650000, join: '2024-02-19', user: 'sales@amdox.com' },
+    { name: 'Eli Brooks', email: 'employee@amdox.com', dept: 'Engineering', title: 'Software Engineer', salary: 1100000, join: '2024-07-01', user: 'employee@amdox.com' },
+    { name: 'Alice Johnson', email: 'alice@amdox.com', dept: 'Engineering', title: 'Frontend Lead', salary: 1800000, join: '2024-01-15' },
+    { name: 'Bob Smith', email: 'bob@amdox.com', dept: 'Engineering', title: 'Backend Developer', salary: 1250000, join: '2024-03-01' },
+    { name: 'Nina Patel', email: 'nina@amdox.com', dept: 'Sales', title: 'Sales Associate', salary: 420000, join: '2025-01-06' },
+    { name: 'Omar Haddad', email: 'omar@amdox.com', dept: 'Engineering', title: 'QA Engineer', salary: 600000, join: '2025-09-01', status: 'ONBOARDING' },
   ];
   const employees: Record<string, string> = {};
   for (const e of employeeSpecs) {
@@ -111,11 +112,11 @@ async function main() {
 
   // ── Products, warehouses, suppliers ─────────────────────────────────────────
   const productSpecs = [
-    { sku: 'SKU-1001', name: 'ThinkPad T14 Gen 3', category: 'Electronics', price: 1200, reorder: 10, daily: 1.6, stock: 38 },
-    { sku: 'SKU-1002', name: 'Ergonomic Office Chair', category: 'Furniture', price: 250, reorder: 15, daily: 0.7, stock: 9 },
-    { sku: 'SKU-1003', name: 'Wireless Mouse M720', category: 'Accessories', price: 40, reorder: 30, daily: 4.5, stock: 140 },
-    { sku: 'SKU-1004', name: '27-inch 4K Monitor', category: 'Electronics', price: 350, reorder: 10, daily: 1.1, stock: 6 },
-    { sku: 'SKU-1005', name: 'USB-C Docking Station', category: 'Accessories', price: 180, reorder: 12, daily: 0.9, stock: 27 },
+    { sku: 'SKU-1001', name: 'ThinkPad T14 Gen 3', category: 'Electronics', price: 95000, reorder: 10, daily: 1.6, stock: 38 },
+    { sku: 'SKU-1002', name: 'Ergonomic Office Chair', category: 'Furniture', price: 14500, reorder: 15, daily: 0.7, stock: 9 },
+    { sku: 'SKU-1003', name: 'Wireless Mouse M720', category: 'Accessories', price: 4200, reorder: 30, daily: 4.5, stock: 140 },
+    { sku: 'SKU-1004', name: '27-inch 4K Monitor', category: 'Electronics', price: 32000, reorder: 10, daily: 1.1, stock: 6 },
+    { sku: 'SKU-1005', name: 'USB-C Docking Station', category: 'Accessories', price: 16500, reorder: 12, daily: 0.9, stock: 27 },
   ];
   const warehouseSpecs = [
     { id: 'wh-main-001', name: 'Main Warehouse', location: 'Bangalore, India' },
@@ -193,9 +194,9 @@ async function main() {
   // Purchase orders
   await prisma.purchaseOrder.createMany({
     data: [
-      { supplierId: 'sup-001', description: 'Monitors restock', subtotal: 7000, tax: 1260, total: 8260, status: 'ISSUED', createdBy: users['inventory@amdox.com']!, approvedBy: admin, createdAt: daysAgo(6) },
-      { supplierId: 'sup-002', description: 'Office chairs Q4', subtotal: 3750, tax: 675, total: 4425, status: 'DRAFT', createdBy: users['inventory@amdox.com']!, createdAt: daysAgo(2) },
-      { supplierId: 'sup-003', description: 'Mice and docks', subtotal: 2200, tax: 396, total: 2596, status: 'RECEIVED', createdBy: users['inventory@amdox.com']!, approvedBy: admin, createdAt: daysAgo(25) },
+      { supplierId: 'sup-001', description: 'Monitors restock', subtotal: 560000, tax: 100800, total: 660800, status: 'ISSUED', createdBy: users['inventory@amdox.com']!, approvedBy: admin, createdAt: daysAgo(6) },
+      { supplierId: 'sup-002', description: 'Office chairs Q4', subtotal: 217500, tax: 39150, total: 256650, status: 'DRAFT', createdBy: users['inventory@amdox.com']!, createdAt: daysAgo(2) },
+      { supplierId: 'sup-003', description: 'Mice and docks', subtotal: 148000, tax: 26640, total: 174640, status: 'RECEIVED', createdBy: users['inventory@amdox.com']!, approvedBy: admin, createdAt: daysAgo(25) },
     ],
   });
 
@@ -210,7 +211,7 @@ async function main() {
       const year = createdAt.getUTCFullYear();
       const seq = (invoiceCounters.get(year) ?? 0) + 1;
       invoiceCounters.set(year, seq);
-      const subtotal = D(Math.round(between(4000, 30000)));
+      const subtotal = D(Math.round(between(150000, 600000)));
       const tax = subtotal.times('0.18').toDecimalPlaces(2);
       const status = m >= 2 ? pick(['PAID', 'PAID', 'PAID', 'OVERDUE'] as const) : pick(['SENT', 'SENT', 'PAID', 'DRAFT'] as const);
       invoices.push({
@@ -227,14 +228,15 @@ async function main() {
 
   // Expenses
   const categories = ['Marketing', 'Travel', 'Infrastructure', 'Office', 'Software'] as const;
-  const submitters = [users['employee@amdox.com']!, users['sales@amdox.com']!, users['inventory@amdox.com']!];
+  // EMPLOYEE accounts have no finance access, so claims come from other staff roles
+  const submitters = [users['hr@amdox.com']!, users['sales@amdox.com']!, users['inventory@amdox.com']!];
   const expenses: Prisma.ExpenseCreateManyInput[] = [];
   for (let m = 5; m >= 0; m--) {
     for (let i = 0; i < 8; i++) {
       const createdAt = monthsAgo(m, 1 + Math.floor(rand() * 25));
       if (createdAt > now) continue;
       const category = pick(categories);
-      const base = { Marketing: 3500, Travel: 1200, Infrastructure: 2600, Office: 600, Software: 900 }[category];
+      const base = { Marketing: 25000, Travel: 8000, Infrastructure: 18000, Office: 4000, Software: 6000 }[category];
       expenses.push({
         category, amount: D(Math.round(between(base * 0.5, base * 1.5))), description: `${category} spend`,
         status: m >= 1 ? pick(['APPROVED', 'REIMBURSED', 'REIMBURSED', 'REJECTED'] as const) : pick(['SUBMITTED', 'APPROVED'] as const),
@@ -248,7 +250,7 @@ async function main() {
   for (const offset of [0, 1]) {
     const d = monthsAgo(offset);
     for (const category of categories) {
-      const amount = { Marketing: 14000, Travel: 4000, Infrastructure: 9000, Office: 2500, Software: 3500 }[category];
+      const amount = { Marketing: 60000, Travel: 15000, Infrastructure: 35000, Office: 8000, Software: 12000 }[category];
       await prisma.budget.upsert({
         where: { category_year_month: { category, year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 } },
         update: {},
@@ -283,9 +285,9 @@ async function main() {
 
   // A few balanced journal entries
   const entries: Array<[string, string, string, number]> = [
-    ['Client payment received', '1000', '1100', 15000],
-    ['Office rent', '6000', '1000', 5000],
-    ['Inventory purchase on credit', '1200', '2000', 8260],
+    ['Client payment received', '1000', '1100', 850000],
+    ['Office rent', '6000', '1000', 150000],
+    ['Inventory purchase on credit', '1200', '2000', 660800],
   ];
   for (const [i, [description, debitAcc, creditAcc, amount]] of entries.entries()) {
     await prisma.journalEntry.create({
@@ -301,8 +303,8 @@ async function main() {
   const stages = ['PROSPECT', 'QUALIFIED', 'PROPOSAL', 'NEGOTIATION', 'WON', 'LOST'] as const;
   await prisma.lead.createMany({
     data: customers.flatMap((customerId, i) => [
-      { customerId, stage: stages[i % stages.length]!, value: Math.round(between(10000, 150000)), assignedTo: 'sales@amdox.com', createdAt: daysAgo(40 - i * 4) },
-      ...(i % 2 === 0 ? [{ customerId, stage: stages[(i + 2) % stages.length]!, value: Math.round(between(5000, 60000)), assignedTo: 'sales@amdox.com', createdAt: daysAgo(15 - i) }] : []),
+      { customerId, stage: stages[i % stages.length]!, value: Math.round(between(200000, 4000000)), assignedTo: 'sales@amdox.com', createdAt: daysAgo(40 - i * 4) },
+      ...(i % 2 === 0 ? [{ customerId, stage: stages[(i + 2) % stages.length]!, value: Math.round(between(100000, 1500000)), assignedTo: 'sales@amdox.com', createdAt: daysAgo(15 - i) }] : []),
     ]),
   });
   await prisma.interaction.createMany({
@@ -310,7 +312,7 @@ async function main() {
   });
   const year = now.getUTCFullYear();
   const orderSpecs = [
-    { status: 'FULFILLED', total: 25000 }, { status: 'CONFIRMED', total: 48000 }, { status: 'DRAFT', total: 12500 }, { status: 'CANCELLED', total: 7800 },
+    { status: 'FULFILLED', total: 450000 }, { status: 'CONFIRMED', total: 875000 }, { status: 'DRAFT', total: 210000 }, { status: 'CANCELLED', total: 135000 },
   ] as const;
   for (const [i, o] of orderSpecs.entries()) {
     await prisma.salesOrder.create({
@@ -322,9 +324,9 @@ async function main() {
   // Leave, attendance, notifications
   await prisma.leaveRequest.createMany({
     data: [
-      { employeeId: employees['employee@amdox.com']!, type: 'ANNUAL', fromDate: daysAgo(-10), toDate: daysAgo(-7), reason: 'Family trip', status: 'PENDING' },
+      { employeeId: employees['employee@amdox.com']!, type: 'ANNUAL', fromDate: daysAgo(-7), toDate: daysAgo(-10), reason: 'Family trip', status: 'PENDING' },
       { employeeId: employees['bob@amdox.com']!, type: 'SICK', fromDate: daysAgo(12), toDate: daysAgo(11), status: 'APPROVED', approvedBy: users['hr@amdox.com'] },
-      { employeeId: employees['sales@amdox.com']!, type: 'ANNUAL', fromDate: daysAgo(-20), toDate: daysAgo(-16), status: 'PENDING' },
+      { employeeId: employees['sales@amdox.com']!, type: 'ANNUAL', fromDate: daysAgo(-16), toDate: daysAgo(-20), status: 'PENDING' },
     ],
   });
   const attendance: Prisma.AttendanceCreateManyInput[] = [];

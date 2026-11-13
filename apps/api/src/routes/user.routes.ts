@@ -3,7 +3,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { requireAuth, requireRole } from '../middleware/auth.middleware';
-import { ROLES } from '../middleware/roles';
+import { READ, ROLES } from '../middleware/roles';
 import { endpoint, idParams } from '../middleware/validate';
 import { ok, created, listQuery, paging, buildMeta } from '../utils/response';
 import { prisma } from '../utils/prisma';
@@ -11,7 +11,8 @@ import { HttpError } from '../utils/httpError';
 import { revokeAllForUser } from '../services/session.service';
 
 const router = Router();
-router.use(requireAuth, requireRole(...ROLES.ADMIN));
+// READ_ONLY may list users; creating and changing users is admin-only
+router.use(requireAuth, requireRole(...READ.ADMIN));
 
 const ROLE_VALUES = ['SUPER_ADMIN', 'HR_MANAGER', 'FINANCE_MANAGER', 'INVENTORY_MANAGER', 'SALES_REP', 'EMPLOYEE', 'READ_ONLY'] as const;
 const select = {
@@ -30,7 +31,7 @@ router.get('/', ...endpoint({ query: listQuery(['createdAt', 'email', 'role']) }
 
 // Creates an account with a random temporary password that is returned once.
 // (There is no e-mail delivery yet, so the admin hands it over out of band.)
-router.post('/', ...endpoint(
+router.post('/', requireRole(...ROLES.ADMIN), ...endpoint(
   { body: z.object({ email: z.string().trim().toLowerCase().email(), role: z.enum(ROLE_VALUES) }).strict() },
   async ({ body }, _req, res) => {
     const temporaryPassword = crypto.randomBytes(12).toString('base64url');
@@ -42,7 +43,7 @@ router.post('/', ...endpoint(
   },
 ));
 
-router.patch('/:id', ...endpoint(
+router.patch('/:id', requireRole(...ROLES.ADMIN), ...endpoint(
   {
     params: idParams,
     body: z.object({ role: z.enum(ROLE_VALUES).optional(), isActive: z.boolean().optional() })

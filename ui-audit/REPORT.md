@@ -1,0 +1,256 @@
+# UI audit — AMX-ERP-2026 web app
+
+Branch `ui-overhaul` (from `fix/review-phases`). Screenshots in `before/` (432) and `after/`.
+They were captured with `apps/web/e2e/capture.mjs`, which:
+- signs in as all 7 seeded roles;
+- covers every page and tab at 1440 / 768 / 390 px;
+- covers light and dark mode for the admin, with each other role in light mode at 1440;
+- captures the modals, the notification dropdown and the forms;
+- captures the loading, empty, error and API-down states (mocked at the network layer), plus the 404 page.
+
+The same run also checks for horizontal overflow and runs axe-core (WCAG 2 A/AA). Raw results are in `before/_report.json` and `before/_report-extras.json`.
+
+Screenshot names follow `<role>--<page>--<tab>--<theme>--<width>.png`. The non-page shots are named `modal--*`, `state--*`, `dropdown--*` and `public--*`.
+
+**Note on the "before" full-page screenshots.** The old layout scrolls inside `<main>` (the body is `h-screen overflow-hidden`), so a "full page" screenshot only shows the first 900 px. That layout is itself issue L4.
+
+## Measured results (before)
+
+| Check | Result |
+|---|---|
+| Horizontal overflow | **48 of 48** tablet and mobile views overflow: by 116 px at 768 and by 400 px at 390. The fixed 256 px sidebar never collapses. |
+| axe `color-contrast` (serious) | **210 nodes on all 24 views.** Causes: white on `#ff5a00` buttons and tabs (3.1:1), `slate-400` hint and axis text (2.6:1), and `slate-500` on `slate-800` in dark mode (3.1:1). |
+| axe `svg-img-alt` (serious) | 11 nodes. The pie charts have no accessible name. |
+| Console | No React warnings (keys, hydration, act). All errors are network errors from the states we provoked: 401 on wrong password, 403/500 from the mocks, and refused connections. |
+| Mobile navigation | Does not exist. There is no menu button and the sidebar is always on screen. |
+
+## Findings
+
+Severity:
+- **Critical:** the app is unusable or broken for a common case.
+- **High:** a significant usability or accessibility failure.
+- **Medium:** inconsistent or poor, but workable.
+- **Low:** polish.
+
+### Layout & navigation
+
+| # | Sev | Problem | Where | Screenshot |
+|---|---|---|---|---|
+| L1 | Critical | The sidebar is a fixed 256 px column at every width. On a 390 px phone the content gets 134 px; text wraps one word per line and the page overflows by 400 px. | all pages | `admin--dashboard--light--mobile.png`, `state--loading--finance--light--mobile.png` |
+| L2 | Critical | Modals open **behind** the sidebar on mobile (z-index). The journal-entry form is cut off and unusable. | every modal | `modal--finance-journal--dark--mobile.png` |
+| L3 | High | The notification dropdown renders **behind** the page cards (the header and `main` both create z-10 stacking contexts). | header | `dropdown--notifications--light--desktop.png` |
+| L4 | High | Scrolling happens inside `<main>` instead of the page. Mobile browser bars never collapse, scroll position is lost on navigation, and print and full-page capture are cut off. | layout | all `before/*` |
+| L5 | High | The header always says "AMDOX ERP \| Dashboard", whatever the page, and repeats the logo next to the sidebar logo. There is no breadcrumb. | all pages | `admin--finance--general-ledger--light--desktop.png` |
+| L6 | High | No mobile navigation toggle at all. | all pages | `_report.json` → missing |
+| L7 | Medium | Tablet (768) still shows the full sidebar. Tables are squeezed to 4 or 5 characters per column, and numbers and dates wrap over 3 lines. | tables | `admin--finance--invoices--light--tablet.png` |
+| L8 | Medium | Action buttons wrap ("New / entry") when they sit next to a search box in card headers. | ledger, directory | `admin--finance--general-ledger--light--desktop.png` |
+| L9 | Medium | The tab bar wraps onto two rows on tablet and stacks vertically on mobile. The tab state is not in the URL, so reload or back resets to the first tab and tabs can't be linked to. | all module pages | `admin--finance--invoices--light--tablet.png` |
+| L10 | Medium | The CRM kanban clips the "Won" and "Lost" columns with no scroll cue. Dragging only works with a pointer. | CRM pipeline | `admin--crm--sales-pipeline--light--desktop.png` |
+| L11 | Medium | A decorative 500 px orange blur sits behind every page (`blur-[150px]`). It adds visual noise and an expensive paint. | layout, login | all |
+| L12 | Low | `html, body { overflow-x: hidden }` hides overflow bugs instead of fixing them. | globals.css | — |
+| L13 | Low | The user block in the sidebar footer can be covered by the Next.js dev indicator. In production the sign-out icon button is 32 px with only a `title`. | sidebar | all |
+
+### Visual consistency & typography
+
+| # | Sev | Problem | Where | Screenshot |
+|---|---|---|---|---|
+| V1 | High | No design tokens. There are 91 hardcoded hex values (53 × `#ff5a00`), and the dark mode is a hand-written `dark:` variant on each element, which is missed in many places. | everywhere | — |
+| V2 | High | The primary brand colour fails contrast as a button background (white on `#ff5a00` is 3.1:1). The same applies to active tabs and the KPI values shown in orange. | all buttons, tabs | axe |
+| V3 | Medium | The login, forgot-password and reset-password pages each use a different card radius (32 px, 24 px), button style (gradient, uppercase "ENTER SYSTEM") and input style. None of them match the app. | public pages | `public--login--light--desktop.png` |
+| V4 | Medium | Seven radius values (lg, xl, 2xl, 3xl, `[32px]`, full) and nine font sizes, including 9, 10 and 11 px text, which is too small to read. | everywhere | — |
+| V5 | Medium | The Geist font is loaded but never applied. The body falls back to the system font, so the app pays the font download for nothing. | layout | — |
+| V6 | Medium | Page titles are `text-3xl font-extrabold` and stat values `text-3xl font-extrabold` in brand orange, competing with each other. The hierarchy is loud and flat. | all pages | `admin--dashboard--light--desktop.png` |
+| V7 | Low | KPI cards colour the value itself (orange, green, red, amber) without any meaning; "Open invoices" is orange-warn and "Revenue" is orange-brand. | dashboard, BI | same |
+| V8 | Low | Unused boilerplate: `app/page.module.css`, `tailwind.config.ts` (Tailwind 4 ignores it), `@source "../../packages/ui"` (the package is deleted) and the Turborepo/Vercel SVGs in `public/`. | — | — |
+
+### Tables & data formatting
+
+| # | Sev | Problem | Where | Screenshot |
+|---|---|---|---|---|
+| T1 | High | Money and quantity columns are left-aligned and not tabular, so digits don't line up. | every table | `admin--hr--payroll--light--desktop.png` |
+| T2 | High | Tables become unreadable below about 900 px: no column priority and no stacked layout on phones. | every table | `admin--finance--invoices--light--tablet.png` |
+| T3 | Medium | Nothing can be sorted, although the API supports `sort` and `order` on ledger, invoices, expenses, employees, products, customers, sales orders and users. | tables | — |
+| T4 | Medium | The pager only appears when there is more than one page and shows "N records · page x of y". It isn't visible at the bottom of long lists. | tables | — |
+| T5 | Medium | Currency is hardcoded to USD/en-US in `lib/format.ts` and can't be configured. | all money | — |
+| T6 | Medium | The ledger "Lines" column crams every debit and credit line into one cell of 12 px text. | ledger | `admin--finance--general-ledger--light--desktop.png` |
+| T7 | Low | Invoice and user status are changed by an inline `<select>` in the table, with no confirmation and no feedback after the change. | invoices, users | — |
+| T8 | Low | Clickable forecast rows are `<tr onClick>`, which keyboard users can't reach. | AI forecast | — |
+
+### Forms
+
+| # | Sev | Problem | Where | Screenshot |
+|---|---|---|---|---|
+| F1 | High | The login inputs use placeholders as labels: they have no `<label>`, and the hint disappears once you type. Forgot and reset use `sr-only` labels. | login | `public--login--light--desktop.png` |
+| F2 | High | `<Field>` wraps the input in a `<label>` but has no `id`, hint or error slot. API validation errors (422 field errors) are shown as one line at the bottom of the form, never next to the field. | all forms | `form--expense-empty-submit--light--desktop.png` |
+| F3 | High | No success feedback. After saving an expense, a supplier, a customer, a budget, a status change or a payroll run, the form silently clears. | all forms | — |
+| F4 | High | "Confirm payroll" (irreversible, creates payslips for everyone) runs on one click with no confirmation. The same applies to cancelling a PO or sales order and disabling a user. | HR payroll, SCM, CRM, settings | `admin--hr--payroll--light--desktop.png` |
+| F5 | Medium | Submit buttons are disabled while pending, but there is no spinner, and Enter in a modal can still re-trigger the submit before the first request settles. | modals | — |
+| F6 | Medium | Number inputs for money have no currency prefix, and `inputMode` is missing on mobile. | money inputs | — |
+| F7 | Medium | Closing a modal keeps its half-filled values and the last error, so reopening shows stale state. | modals | — |
+| F8 | Low | "Forgot password" claims "Check your email", but no email is ever sent (no provider is configured). | forgot password | `public--forgot-password--light--desktop.png` |
+
+### States
+
+| # | Sev | Problem | Where | Screenshot |
+|---|---|---|---|---|
+| S1 | Critical | **API down → the user is silently redirected to the login page** with no message, because any network failure in `restoreSession` counts as signed out. | session guard | `state--api-down--light--desktop.png` |
+| S2 | High | Loading is a full-screen spinner during the session check, then "Loading…" text. There are no skeletons, so the layout jumps when data arrives. | all pages | `state--loading--dashboard--light--desktop.png` |
+| S3 | Medium | The error state shows the raw API message ("Internal server error") with no title or explanation. The retry button is tiny. | all data views | `state--error--finance--light--desktop.png` |
+| S4 | Medium | Empty states are one grey line with no guidance or call to action (for example "Create the first entry"). | all lists | `state--empty--finance-general-ledger--light--desktop.png` |
+| S5 | Medium | The 404 page is Next's default black screen, unbranded and ignoring the theme. There is no 403 page. Tabs a role can't use show an amber "no access" card instead of being hidden. | 404, settings, SCM forecast | `state--404--dark--mobile.png` |
+| S6 | Medium | No error boundary (`error.tsx`), so a render error white-screens the app. | app | — |
+
+### Charts
+
+| # | Sev | Problem | Where | Screenshot |
+|---|---|---|---|---|
+| C1 | High | Chart colours are hardcoded for light mode. Grid lines (`#E5E7EB`) glare in dark mode, the tooltip is a white box in dark mode, and the legend text is drawn in the series colour. | dashboard, BI, forecast | `admin--bi--dashboards--dark--desktop.png` |
+| C2 | Medium | Ad-hoc palettes (two different 7-colour lists) whose order differs between dashboard and BI, so "Payroll" changes colour from page to page. The palette is not checked for colour-blind separation. | dashboard, BI | — |
+| C3 | Medium | The current, still-running month is plotted like a complete month, so costs "drop to $0" in November. `monotone` smoothing also invents curves between monthly points. | dashboard, BI | `admin--dashboard--light--desktop.png` |
+| C4 | Medium | The pie charts have no accessible name (axe `svg-img-alt`), and there is no table alternative next to any chart. | dashboard, BI | axe |
+| C5 | Low | Charts with all-zero data still render empty axes instead of an empty state. | dashboard, BI | — |
+| C6 | Low | The forecast tooltip shows raw floats with no units. | AI forecast | — |
+
+### Accessibility
+
+| # | Sev | Problem | Where |
+|---|---|---|---|
+| A1 | High | 210 contrast failures (see V2; slate-400 hints; dark-mode slate-500 text). |
+| A2 | High | The modal has `role=dialog` but no focus trap, focus isn't moved into it or restored, Escape doesn't close it, and the page behind keeps scrolling. |
+| A3 | High | Tabs have `role=tab` but no `tablist` arrow-key navigation, `aria-controls` or `tabpanel`. |
+| A4 | Medium | There is no visible focus style on most controls (inputs only change border colour). There is no skip link. |
+| A5 | Medium | Icon-only buttons (sign out, copy password, remove journal line) rely on `title` or are unlabeled. The unread dot uses `aria-label` on a `span`. |
+| A6 | Medium | The notification dropdown isn't closable with Escape, focus isn't managed, and it has no `role`. |
+| A7 | Low | The active nav link doesn't set `aria-current="page"`. |
+
+### Dark mode
+
+| # | Sev | Problem | Where | Screenshot |
+|---|---|---|---|---|
+| D1 | High | **White flash on every load.** The theme is applied in a `useEffect` after hydration, so dark-mode users see a light frame first. | all | — |
+| D2 | High | The login, forgot and reset pages have no dark mode at all: a white card on a light page while the app is dark. | public | `public--login--dark--mobile.png` |
+| D3 | Medium | The theme ignores the OS preference (`prefers-color-scheme`); the default is always light. | all | — |
+| D4 | Medium | Many elements have no `dark:` variant: `text-slate-500` hints, badges in tables, the payroll preview colours and the chart internals. | various | `admin--bi--dashboards--dark--desktop.png` |
+
+### Performance
+
+| # | Sev | Problem |
+|---|---|---|
+| P1 | Medium | Recharts (about 100 KB gzip) is bundled into the dashboard, BI and SCM routes even when the chart tab isn't open (the SCM forecast tab, the BI report builder). |
+| P2 | Low | Fonts: two variable fonts are downloaded and never used (V5). |
+| P3 | Low | Each module page is one large client component; every tab's code ships up front. This is acceptable at this size and noted only. |
+
+## Not changed (needs a decision)
+
+- **Read access by role:** the API lets every signed-in role read every module (an EMPLOYEE can list all invoices; READ_ONLY sees the ledger). The UI mirrors the API, so the nav shows every module. Narrowing reads is a backend RBAC decision.
+- **Currency:** the data is USD-like (salaries of 64k–180k a year). I made the currency configurable (`NEXT_PUBLIC_CURRENCY`, `NEXT_PUBLIC_LOCALE`), defaulting to USD. Switching to ₹ is a one-line env change, but the seed amounts would then read as rupees.
+
+---
+
+# After the overhaul
+
+The same capture was run against the rebuilt UI (`after/`, about 400 screenshots). Here is what changed.
+
+| Check | Before | After |
+|---|---|---|
+| Horizontal page overflow (tablet and phone views) | 48 / 48 views | 0 views |
+| axe `color-contrast` | 210 nodes, 24 views | 0 |
+| axe `svg-img-alt` | 11 | 0 (each chart is `role="img"` with a label, plus a "Show data table" option) |
+| Any axe WCAG 2 A/AA violation | 2 rules | **0 rules** on all 24 views |
+| Console errors during normal use | 0 | 0 (Playwright smoke test, all 7 roles, every page and tab) |
+| Mobile navigation | none | off-canvas drawer (native `<dialog>`) |
+
+## Status per finding
+
+| # | Sev | Status | How |
+|---|---|---|---|
+| L1 | Critical | Fixed | Sidebar fixed from `lg` (1024 px) up; below that, a drawer |
+| L2 | Critical | Fixed | Modals use native `<dialog>` in the top layer, above every z-index |
+| L3 | High | Fixed | Notification panel is positioned from the header, with no competing stacking contexts |
+| L4 | High | Fixed | The document scrolls; the header is sticky; scroll resets to the top on navigation |
+| L5 | High | Fixed | Header breadcrumb (Module › Tab); one h1 per page |
+| L6 | High | Fixed | "Open navigation" button |
+| L7 | Medium | Fixed | Tables become cards below `md`; the low-priority "Lines" column shows from `xl` |
+| L8 | Medium | Fixed | Buttons never wrap (`whitespace-nowrap`); card actions wrap as a group |
+| L9 | Medium | Fixed | Underline tabs that scroll sideways; active tab kept in `?tab=` |
+| L10 | Medium | Fixed | Columns scroll and snap; each card has a "Stage" menu (keyboard and touch) |
+| L11 | Medium | Fixed | Decorative blurs removed |
+| L12 | Low | Fixed | `overflow-x: hidden` removed; overflow is fixed at the source |
+| L13 | Low | Fixed | Account menu in the header with a labelled sign-out |
+| V1 | High | Fixed | Semantic tokens in `globals.css`; no hex colours in components |
+| V2 | High | Fixed | Primary action colour `#c2410c` (5.2:1 with white); brand `#ff5a00` kept for the logo mark |
+| V3 | Medium | Fixed | Shared `AuthCard`; same inputs and buttons as the app |
+| V4 | Medium | Fixed | Radius: 8 px controls, 12 px cards, 16 px dialogs. Type scale 12/14/16/18/24 px (only the notification count badge uses 10 px) |
+| V5 | Medium | Fixed | Geist applied through `--font-sans` |
+| V6 | Medium | Fixed | Page title 24 px semibold; KPI values in text colour |
+| V7 | Low | Fixed | Colour only on the KPI hint line, and always with words |
+| V8 | Low | Fixed | Boilerplate removed |
+| T1 | High | Fixed | `numeric` columns are right-aligned with tabular figures |
+| T2 | High | Fixed | Stacked phone cards from the same column definitions |
+| T3 | Medium | Mostly fixed | Server-side sort on every endpoint that supports it; client-side sort for POs, suppliers, forecast and reports. Leave, attendance and the audit log stay unsorted because their endpoints take no sort parameter. |
+| T4 | Medium | Fixed | "1–20 of 31 invoices" footer, with Previous / Page x of y / Next |
+| T5 | Medium | Fixed | `NEXT_PUBLIC_CURRENCY` / `NEXT_PUBLIC_LOCALE` (default USD / en-US) |
+| T6 | Medium | Fixed | One aligned row per line: Dr/Cr, account, amount |
+| T7 | Low | Partial | Role changes and disabling a user now ask for confirmation and toast the result. Invoice status is still an inline select (it now toasts), because every transition is reversible. |
+| T8 | Low | Fixed | Selectable forecast rows have a button in the first cell and `aria-selected` |
+| F1 | High | Fixed | Visible labels; show-password toggle; `autocomplete` |
+| F2 | High | Fixed | `<Form>` shows client and 422 errors under each field and focuses the first invalid field |
+| F3 | High | Fixed | Toasts after every create, update and status change |
+| F4 | High | Fixed | Confirm dialog before running payroll, cancelling a PO or sales order, disabling a user and changing a role |
+| F5 | Medium | Fixed | Spinner and `aria-busy` on submit; repeat submits are ignored |
+| F6 | Medium | Fixed | Currency prefix and `inputMode` on money, number, email and phone fields |
+| F7 | Medium | Fixed | Modal content unmounts on close, so forms always open clean |
+| F8 | Low | Fixed | The copy now says a request was recorded and to contact an administrator |
+| S1 | Critical | Fixed | A network error or 5xx shows "Can't reach the server" with a retry; only a 401/403 counts as signed out |
+| S2 | High | Fixed | Shell skeleton during the session check; table, stat, chart and kanban skeletons |
+| S3 | Medium | Fixed | Titled error card, explanation and "Try again"; separate offline and no-access variants |
+| S4 | Medium | Fixed | Icon, title, guidance and a call-to-action button where the role can create records |
+| S5 | Medium | Fixed | Branded 404; tabs a role can't use are hidden; 403 variant of `ErrorState` |
+| S6 | Medium | Fixed | `app/(dashboard)/error.tsx` boundary |
+| C1 | High | Fixed | Chart colours read from tokens, so they switch with the theme; HTML legends and tooltips in text colours |
+| C2 | Medium | Fixed | Reference palette (CVD-validated), with fixed slots per entity (revenue = blue, costs = orange, …) |
+| C3 | Medium | Fixed | Current month labelled "(to date)" and shaded; straight lines between monthly points |
+| C4 | Medium | Fixed | `role="img"` and `aria-label`; "Show data table" under each chart; donuts replaced by labelled bar lists |
+| C5 | Low | Fixed | Empty state when a range has no data |
+| C6 | Low | Fixed | Tooltip shows units ("12.5 units") |
+| A1 | High | Fixed | axe: 0 violations |
+| A2 | High | Fixed | Native modal dialog: inert background, Escape, focus restore, scroll lock |
+| A3 | High | Fixed | WAI-ARIA tabs (arrows / Home / End, `aria-controls`, `tabpanel`) |
+| A4 | Medium | Fixed | Global `:focus-visible` ring; skip-to-content link |
+| A5 | Medium | Fixed | `IconButton` requires `aria-label` |
+| A6 | Medium | Fixed | Escape closes the panel and returns focus to the bell; the panel is a labelled region |
+| A7 | Low | Fixed | `aria-current="page"` |
+| D1 | High | Fixed | Inline head script sets the theme before first paint |
+| D2 | High | Fixed | Auth pages use the same tokens and have a theme toggle |
+| D3 | Medium | Fixed | Light / Dark / System; System is the default |
+| D4 | Medium | Fixed | Tokens cover every surface; no per-element `dark:` styling left to miss |
+| P1 | Medium | Fixed | Recharts loads through `next/dynamic`, so only routes that draw a chart fetch it, and only when the chart renders |
+| P2 | Low | Fixed | Fonts are now used (`display: swap`) |
+| P3 | Low | Skipped | Splitting each page per tab isn't worth it at this size |
+
+Found during the rebuild and fixed:
+- Two seeded leave requests had their start and end dates swapped, so the UI showed a negative number of days. The API already rejects this; only the seed was wrong.
+- Visually hidden table header labels escaped the scroll container and caused a 26 px page overflow.
+
+---
+
+# Follow-up: role-based read access, INR, tablet leave table
+
+Decisions applied (2026-11-12):
+
+- **Read access is enforced by the API** (`READ` in `apps/api/src/middleware/roles.ts`), and the UI follows it:
+  - EMPLOYEE sees only their own profile, attendance, leave and payslips.
+  - READ_ONLY reads everything and writes nothing.
+  - Other roles read the modules they write to, plus what they clearly need.
+  - The sidebar lists only modules the role can read; a direct link to any other module shows a "No access" page. Tabs are hidden per role.
+  - The dashboard is assembled from per-module sections, plus a personal "your day" panel.
+- **Currency:** INR with en-IN formatting (₹12,34,567.00; compact ₹12.3L / ₹1.2Cr). The seed and demo data are in rupees (salaries ₹4.2–25 lakh a year).
+- **Leave table at tablet width:** the day count sits under the dates and the reason column shows from `xl`, so Approve and Reject are visible without scrolling.
+
+Re-run results:
+- axe: 0 violations on 24 views.
+- Horizontal overflow: 0.
+- Console errors: 0 outside the deliberately provoked states.
+- Playwright: 10/10. Each role's sidebar matches its access, every visible tab loads without 403 or error states, and forbidden modules show "No access".
+
+Screenshots: `after/employee--dashboard--light--desktop.png`, `after/employee--hr--payroll--light--mobile.png`, `after/viewer--settings--users-roles--light--desktop.png`, `after/admin--hr--leave--light--tablet.png`.

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, requireRole } from '../middleware/auth.middleware';
 import { endpoint, idParams, noInput, uuid } from '../middleware/validate';
-import { ROLES } from '../middleware/roles';
+import { READ, ROLES } from '../middleware/roles';
 import { ok, created } from '../utils/response';
 import { prisma } from '../utils/prisma';
 import { nonNegativeMoney } from '../utils/money';
@@ -28,7 +28,7 @@ const supplierSchema = z.object({
   paymentTerms: z.string().max(100).optional(),
 }).strict();
 
-router.get('/orders', ...endpoint({ query: noInput }, async (_input, _req, res) => {
+router.get('/orders', requireRole(...READ.PURCHASING), ...endpoint({ query: noInput }, async (_input, _req, res) => {
   const orders = await prisma.purchaseOrder.findMany({
     orderBy: { createdAt: 'desc' },
     include: { supplier: { select: { name: true } } },
@@ -72,7 +72,7 @@ for (const [action, t] of Object.entries(TRANSITIONS)) {
   }));
 }
 
-router.get('/suppliers', ...endpoint({ query: noInput }, async (_input, _req, res) => {
+router.get('/suppliers', requireRole(...READ.PURCHASING), ...endpoint({ query: noInput }, async (_input, _req, res) => {
   const suppliers = await prisma.supplier.findMany({ orderBy: { name: 'asc' }, take: 200 });
   return ok(res, suppliers);
 }));

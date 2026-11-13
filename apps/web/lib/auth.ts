@@ -75,8 +75,14 @@ export function refreshAccessToken(): Promise<string> {
   return refreshing;
 }
 
+export type RestoreResult =
+  | { status: 'ok'; user: AuthUser }
+  | { status: 'signed-out' }
+  /** API unreachable or failing (network error / 5xx): not the same as signed out */
+  | { status: 'unavailable' };
+
 /** Validates the current session with /auth/me, refreshing first if needed. */
-export async function restoreSession(): Promise<AuthUser | null> {
+export async function restoreSession(): Promise<RestoreResult> {
   try {
     if (!accessToken) await refreshAccessToken();
     const { data } = await authClient.get('/auth/me', {
@@ -84,10 +90,12 @@ export async function restoreSession(): Promise<AuthUser | null> {
     });
     currentUser = data.data as AuthUser;
     emit();
-    return currentUser;
-  } catch {
+    return { status: 'ok', user: currentUser };
+  } catch (err: any) {
+    const status: number | undefined = err?.response?.status;
+    if (!status || status >= 500) return { status: 'unavailable' };
     clearSession();
-    return null;
+    return { status: 'signed-out' };
   }
 }
 

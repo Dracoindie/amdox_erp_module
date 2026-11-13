@@ -2,12 +2,13 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, requireRole } from '../middleware/auth.middleware';
 import { endpoint, noInput } from '../middleware/validate';
-import { ROLES } from '../middleware/roles';
+import { READ } from '../middleware/roles';
 import { ok, buildMeta, paging } from '../utils/response';
 import { prisma } from '../utils/prisma';
 
 const router = Router();
-router.use(requireAuth, requireRole(...ROLES.ADMIN));
+// Read-only endpoints: admins and READ_ONLY auditors
+router.use(requireAuth, requireRole(...READ.ADMIN));
 
 const auditQuery = z.object({
   page: z.coerce.number().int().positive().default(1),

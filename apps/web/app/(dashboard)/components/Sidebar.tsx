@@ -1,109 +1,96 @@
 'use client';
 
-import {
-  LayoutDashboard, Wallet, Users, Package,
-  BarChart3, Settings, UserCircle2, Building2, LogOut
-} from 'lucide-react';
+import { useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { logout } from '../../../lib/auth';
+import { usePathname } from 'next/navigation';
+import { X } from 'lucide-react';
 import { useAuthUser } from '../../../lib/useAuth';
+import { isActive, navFor } from '../../../lib/navigation';
+import { Logo } from '../../../components/Logo';
+import { IconButton, cx } from '../../../components/ui';
 
-function initials(text: string) {
-  return text.split(/[\s.@_-]+/).filter(Boolean).slice(0, 2).map((p) => p[0]!.toUpperCase()).join('');
-}
-
-const navigation = [
-  { name: 'Dashboard',            icon: LayoutDashboard, href: '/' },
-  { name: 'Financial Ledger',     icon: Wallet,          href: '/finance' },
-  { name: 'HR & Payroll',         icon: Users,           href: '/hr' },
-  { name: 'Supply Chain',         icon: Package,         href: '/scm' },
-  { name: 'CRM & Sales',          icon: UserCircle2,     href: '/crm' },
-  { name: 'Business Intelligence',icon: BarChart3,       href: '/bi' },
-  { name: 'Settings',             icon: Settings,        href: '/settings' },
-];
-
-export function Sidebar() {
+function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
-  const router = useRouter();
-
-  const isActive = (href: string) =>
-    href === '/' ? pathname === '/' : pathname.startsWith(href);
-
   const user = useAuthUser();
-  const displayName = user?.employee?.name ?? user?.email ?? '';
-  const roleLabel = user?.role.replace(/_/g, ' ').toLowerCase() ?? '';
-
-  const handleSignOut = async () => {
-    try {
-      await logout();
-    } finally {
-      router.replace('/login');
-    }
-  };
-
+  const items = navFor(user);
   return (
-    <div className="flex shrink-0 h-full w-64 flex-col bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-r border-slate-200 dark:border-slate-700 relative z-20 shadow-lg">
-      {/* Logo */}
-      <div className="flex h-16 items-center gap-3 border-b border-slate-200 dark:border-slate-700 px-5 bg-slate-50 dark:bg-slate-800/50">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#ff5a00] to-orange-600 shadow-sm shadow-orange-500/20">
-          <Building2 className="h-5 w-5 text-white" />
-        </div>
-        <div>
-          <p className="text-sm font-extrabold tracking-tight leading-none text-slate-900 dark:text-white">AMDOX <span className="text-[#ff5a00]">ERP</span></p>
-          <p className="text-[10px] text-slate-500 font-medium leading-none mt-1 uppercase tracking-wider">AMX-2026</p>
-        </div>
-      </div>
-
-      {/* Nav */}
-      <nav className="flex-1 space-y-1 px-3 py-6 overflow-y-auto">
-        <p className="mb-3 px-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-          Modules
-        </p>
-        {navigation.map((item) => {
-          const active = isActive(item.href);
+    <nav aria-label="Main" className="flex-1 overflow-y-auto px-3 py-4">
+      <ul className="space-y-0.5">
+        {items.map((item) => {
+          const active = isActive(pathname, item.href);
           return (
-            <Link
-              key={item.name}
-              href={item.href}
-              className={`group flex items-center rounded-xl px-3 py-3 text-sm font-semibold transition-all duration-300 ${
-                active
-                  ? 'bg-orange-50 dark:bg-orange-500/10 text-[#ff5a00] border-l-2 border-[#ff5a00]'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white border-l-2 border-transparent'
-              }`}
-            >
-              <item.icon
-                className={`mr-3 h-5 w-5 shrink-0 transition-colors ${
-                  active ? 'text-[#ff5a00]' : 'text-slate-400 group-hover:text-[#ff5a00]'
-                }`}
-              />
-              {item.name}
-            </Link>
+            <li key={item.href}>
+              <Link
+                href={item.href}
+                onClick={onNavigate}
+                aria-current={active ? 'page' : undefined}
+                className={cx(
+                  'group flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors',
+                  active ? 'bg-primary-soft text-primary-soft-fg' : 'text-fg-muted hover:bg-surface-2 hover:text-fg',
+                )}
+              >
+                <item.icon className={cx('h-[18px] w-[18px] shrink-0', active ? 'text-primary-soft-fg' : 'text-fg-subtle group-hover:text-fg-muted')} aria-hidden />
+                {item.label}
+              </Link>
+            </li>
           );
         })}
-      </nav>
+      </ul>
+    </nav>
+  );
+}
 
-      {/* Footer */}
-      <div className="border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-200 dark:bg-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 shadow-inner border border-slate-300 dark:border-slate-600">
-              {initials(displayName) || '?'}
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-bold text-slate-900 dark:text-white">{displayName}</p>
-              <p className="truncate text-[10px] font-medium text-[#ff5a00] uppercase tracking-wider">{roleLabel}</p>
-            </div>
-          </div>
-          <button 
-            onClick={handleSignOut}
-            title="Sign Out"
-            className="p-2 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
-        </div>
+/** Fixed sidebar from the `lg` breakpoint up. */
+export function Sidebar() {
+  return (
+    <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-line bg-surface lg:flex">
+      <div className="flex h-16 shrink-0 items-center border-b border-line px-5">
+        <Link href="/"><Logo /><span className="sr-only"> (home)</span></Link>
       </div>
-    </div>
+      <NavLinks />
+      <p className="border-t border-line px-5 py-3 text-xs text-fg-subtle">AMX-ERP-2026 · v0.2</p>
+    </aside>
+  );
+}
+
+/**
+ * Off-canvas navigation below `lg`. A native modal <dialog> traps focus, closes
+ * on Escape and on backdrop click; it also closes after navigating.
+ */
+export function MobileNav({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const pathname = usePathname();
+
+  useEffect(() => {
+    const d = ref.current;
+    if (!d) return;
+    if (open && !d.open) d.showModal();
+    if (!open && d.open) d.close();
+  }, [open]);
+
+  // Close when the route changes (e.g. browser back while open)
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    onClose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
+  return (
+    <dialog
+      ref={ref}
+      aria-label="Navigation"
+      onCancel={(e) => { e.preventDefault(); onClose(); }}
+      onClick={(e) => { if (e.target === ref.current) onClose(); }}
+      className="fixed inset-y-0 left-0 m-0 h-dvh max-h-dvh w-72 max-w-[85vw] border-r border-line bg-surface p-0 text-fg shadow-xl lg:hidden"
+    >
+      <div className="flex h-full flex-col">
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-line px-4">
+          <Logo />
+          <IconButton icon={X} aria-label="Close navigation" onClick={onClose} />
+        </div>
+        <NavLinks onNavigate={onClose} />
+      </div>
+    </dialog>
   );
 }

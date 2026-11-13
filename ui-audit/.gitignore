@@ -1,0 +1,4 @@
+# Full screenshot sets stay local (≈35 MB each). The ones referenced in
+# REPORT.md and the before/after pairs are force-added (git add -f).
+before/*.png
+after/*.png
