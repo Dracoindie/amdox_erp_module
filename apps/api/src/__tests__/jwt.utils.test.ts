@@ -1,35 +1,32 @@
-import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt';
 import jwt from 'jsonwebtoken';
+import { signAccessToken, verifyAccessToken, signRefreshToken, verifyRefreshToken, hashToken } from '../utils/jwt';
 
-describe('JWT Utilities', () => {
-  const payload = { userId: 'usr-123', email: 'test@amdox.com', role: 'ADMIN' };
-  
-  const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'amdox-access-secret-change-in-prod';
-  const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'amdox-refresh-secret-change-in-prod';
+describe('JWT utilities', () => {
+  const payload = { userId: 'usr-123', email: 'test@amdox.com', role: 'SUPER_ADMIN' };
 
-  it('should sign an access token', () => {
-    const token = signAccessToken(payload);
-    expect(typeof token).toBe('string');
-    const decoded = jwt.verify(token, ACCESS_SECRET) as any;
-    expect(decoded.userId).toBe(payload.userId);
-    expect(decoded.email).toBe(payload.email);
+  it('signs and verifies an access token', () => {
+    expect(verifyAccessToken(signAccessToken(payload))).toEqual(payload);
   });
 
-  it('should sign a refresh token', () => {
-    const token = signRefreshToken(payload);
-    expect(typeof token).toBe('string');
-    const decoded = jwt.verify(token, REFRESH_SECRET) as any;
-    expect(decoded.userId).toBe(payload.userId);
+  it('rejects an access token signed with another secret (e.g. an old hardcoded fallback)', () => {
+    const forged = jwt.sign(payload, 'amdox-access-secret-change-in-prod');
+    expect(() => verifyAccessToken(forged)).toThrow();
   });
 
-  it('should verify a valid refresh token', () => {
-    const token = signRefreshToken(payload);
-    const decoded = verifyRefreshToken(token);
-    expect(decoded).not.toBeNull();
-    expect(decoded?.userId).toBe(payload.userId);
+  it('rejects an unsigned (alg=none) token', () => {
+    const unsigned = jwt.sign(payload, '', { algorithm: 'none' });
+    expect(() => verifyAccessToken(unsigned)).toThrow();
   });
 
-  it('should throw for invalid refresh token', () => {
+  it('gives every refresh token of the same user a different hash', () => {
+    const a = signRefreshToken('usr-123', 'fam-1');
+    const b = signRefreshToken('usr-123', 'fam-1');
+    expect(a).not.toBe(b);
+    expect(hashToken(a)).not.toBe(hashToken(b));
+    expect(verifyRefreshToken(a)).toMatchObject({ sub: 'usr-123', fam: 'fam-1' });
+  });
+
+  it('throws for an invalid refresh token', () => {
     expect(() => verifyRefreshToken('invalid-token')).toThrow();
   });
 });

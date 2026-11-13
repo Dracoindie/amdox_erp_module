@@ -1,131 +1,239 @@
-import { Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
-import { ok, created, notFoundResp, unprocessable, parsePagination, buildMeta } from '../utils/response';
+import { ok, created, listQuery, paging, buildMeta } from '../utils/response';
+import { endpoint, idParams, noInput, uuid } from '../middleware/validate';
+import { HttpError, notFound } from '../utils/httpError';
+import { logger } from '../utils/logger';
+import { randomUUID } from 'node:crypto';
+import { positiveMoney } from '../utils/money';
+import { Prisma } from '@prisma/client';
+import type { AIForecastResponse } from '@repo/types';
+import { env } from '../config/env';
+import { ROLES } from '../middleware/roles';
+import { notifyRoles } from '../services/notify.service';
 
 // ── Products ──────────────────────────────────────────────────────────────────
 
 const productSchema = z.object({
-  sku: z.string().min(1),
-  name: z.string().min(1),
-  category: z.string().optional(),
-  unitPrice: z.number().positive(),
+  sku: z.string().trim().min(1).max(64),
+  name: z.string().trim().min(1).max(200),
+  category: z.string().max(100).optional(),
+  unitPrice: positiveMoney,
   reorderLevel: z.number().int().min(0).default(10),
-  unit: z.string().default('piece'),
-});
+  unit: z.string().max(32).default('piece'),
+}).strict();
 
-export async function listProducts(req: Request, res: Response) {
-  const { page, limit, skip, sort, order, search } = parsePagination(req.query as any);
-  const activeSort = sort === 'createdAt' ? 'sku' : sort;
-  const where = search
-    ? { isActive: true, OR: [
-        { name: { contains: search, mode: 'insensitive' as const } },
-        { sku:  { contains: search, mode: 'insensitive' as const } },
-      ]}
-    : { isActive: true };
+const productQuery = listQuery(['sku', 'name', 'category', 'unitPrice']);
+
+export const listProducts = endpoint({ query: productQuery }, async ({ query }, _req, res) => {
+  const where = {
+    isActive: true,
+    ...(query.search && {
+      OR: [
+        { name: { contains: query.search, mode: 'insensitive' as const } },
+        { sku: { contains: query.search, mode: 'insensitive' as const } },
+      ],
+    }),
+  };
   const [products, total] = await Promise.all([
     prisma.product.findMany({
       where,
-      skip,
-      take: limit,
-      orderBy: { [activeSort]: order },
+      ...paging(query),
+      orderBy: { [query.sort]: query.order },
       include: { stockLevels: { include: { warehouse: { select: { name: true } } } } },
     }),
     prisma.product.count({ where }),
   ]);
-  return ok(res, products, 'Products retrieved', buildMeta(page, limit, total));
-}
+  return ok(res, products, 'Products retrieved', buildMeta(query.page, query.limit, total));
+});
 
-export async function getProduct(req: Request, res: Response) {
+export const getProduct = endpoint({ params: idParams }, async ({ params }, _req, res) => {
   const product = await prisma.product.findUnique({
-    where: { id: req.params.id },
+    where: { id: params.id },
     include: { stockLevels: true, stockMovements: { orderBy: { createdAt: 'desc' }, take: 20 } },
   });
-  if (!product) return notFoundResp(res, 'Product not found');
+  if (!product) throw notFound('Product');
   return ok(res, product);
-}
+});
 
-export async function createProduct(req: Request, res: Response) {
-  const parsed = productSchema.safeParse(req.body);
-  if (!parsed.success) return unprocessable(res, 'Validation failed', parsed.error.flatten());
-  const product = await prisma.product.create({ data: parsed.data });
+export const createProduct = endpoint({ body: productSchema }, async ({ body }, _req, res) => {
+  const product = await prisma.product.create({ data: body });
   return created(res, product, 'Product created');
-}
+});
 
-export async function updateProduct(req: Request, res: Response) {
-  const parsed = productSchema.partial().safeParse(req.body);
-  if (!parsed.success) return unprocessable(res, 'Validation failed', parsed.error.flatten());
-  const existing = await prisma.product.findUnique({ where: { id: req.params.id } });
-  if (!existing) return notFoundResp(res, 'Product not found');
-  const product = await prisma.product.update({ where: { id: req.params.id }, data: parsed.data });
-  return ok(res, product, 'Product updated');
-}
+export const updateProduct = endpoint(
+  { params: idParams, body: productSchema.partial() },
+  async ({ params, body }, _req, res) => {
+    const product = await prisma.product.update({ where: { id: params.id }, data: body });
+    return ok(res, product, 'Product updated');
+  },
+);
 
 // ── Stock Levels + Low-Stock Alert ────────────────────────────────────────────
 
-export async function getStockLevels(req: Request, res: Response) {
+export const getStockLevels = endpoint({ query: noInput }, async (_input, _req, res) => {
   const levels = await prisma.stockLevel.findMany({
-    include: {
-      product: true,
-      warehouse: { select: { name: true, location: true } },
-    },
+    include: { product: true, warehouse: { select: { name: true, location: true } } },
+    take: 500,
   });
-
-  const enriched = levels.map((l: any) => ({
-    ...l,
-    isLowStock: l.quantity <= l.product.reorderLevel,
-  }));
-
+  const enriched = levels.map((l) => ({ ...l, isLowStock: l.quantity <= l.product.reorderLevel }));
   return ok(res, enriched, 'Stock levels retrieved');
-}
+});
 
 // ── Stock Movement ────────────────────────────────────────────────────────────
 
 const movementSchema = z.object({
-  productId: z.string().uuid(),
+  productId: uuid,
+  warehouseId: uuid,
   type: z.enum(['IN', 'OUT', 'ADJUSTMENT']),
-  quantity: z.number().int().positive(),
-  refId: z.string().optional(),
-  refType: z.string().optional(),
-  note: z.string().optional(),
+  // IN and OUT take a positive quantity; ADJUSTMENT takes a signed, non-zero delta.
+  quantity: z.number().int().refine((q) => q !== 0, 'Quantity cannot be 0'),
+  refId: z.string().max(100).optional(),
+  refType: z.string().max(50).optional(),
+  note: z.string().max(1000).optional(),
+}).strict().refine((m) => m.type === 'ADJUSTMENT' || m.quantity > 0, {
+  message: 'IN and OUT quantities must be positive', path: ['quantity'],
 });
 
-export async function recordStockMovement(req: Request, res: Response) {
-  const parsed = movementSchema.safeParse(req.body);
-  if (!parsed.success) return unprocessable(res, 'Validation failed', parsed.error.flatten());
+/**
+ * Records a movement and updates the stock level in one transaction.
+ * Decrements use a conditional UPDATE (quantity >= n), so concurrent OUTs can
+ * never push stock below zero: the loser gets 409.
+ */
+export const recordStockMovement = endpoint({ body: movementSchema }, async ({ body }, req, res) => {
+  const delta = body.type === 'OUT' ? -body.quantity : body.quantity;
 
-  const movement = await prisma.stockMovement.create({
-    data: { ...parsed.data, performedBy: req.user!.userId },
-  });
-  return created(res, movement, 'Stock movement recorded');
-}
+  const result = await prisma.$transaction(async (tx) => {
+    const [product, warehouse] = await Promise.all([
+      tx.product.findFirst({
+        where: { id: body.productId, isActive: true },
+        select: { id: true, sku: true, name: true, reorderLevel: true },
+      }),
+      tx.warehouse.findUnique({ where: { id: body.warehouseId }, select: { id: true } }),
+    ]);
+    if (!product) throw notFound('Product');
+    if (!warehouse) throw notFound('Warehouse');
 
-export async function getAiForecast(req: Request, res: Response) {
-  try {
-    const mlUrl = process.env.ML_SERVICE_URL || 'http://localhost:8000';
-    const response = await fetch(`${mlUrl}/api/v1/forecast/demand`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      console.error(`ML service returned status ${response.status}`);
-      return res.status(response.status).json({
-        success: false,
-        message: `ML service forecasting error (HTTP ${response.status})`,
+    if (delta > 0) {
+      await tx.$executeRaw`
+        INSERT INTO "stock_levels" ("id", "product_id", "warehouse_id", "quantity", "updated_at")
+        VALUES (${randomUUID()}, ${body.productId}, ${body.warehouseId}, ${delta}, NOW())
+        ON CONFLICT ("product_id", "warehouse_id")
+        DO UPDATE SET "quantity" = "stock_levels"."quantity" + ${delta}, "updated_at" = NOW()`;
+    } else {
+      const need = -delta;
+      const { count } = await tx.stockLevel.updateMany({
+        where: { productId: body.productId, warehouseId: body.warehouseId, quantity: { gte: need } },
+        data: { quantity: { decrement: need } },
       });
+      if (count === 0) {
+        const level = await tx.stockLevel.findUnique({
+          where: { productId_warehouseId: { productId: body.productId, warehouseId: body.warehouseId } },
+        });
+        throw new HttpError(409, 'Insufficient stock', { available: level?.quantity ?? 0, requested: need });
+      }
     }
 
-    const data = await response.json();
-    return res.json(data);
-  } catch (error: any) {
-    console.error('Failed to proxy forecast request to ML service:', error);
-    return res.status(502).json({
-      success: false,
-      message: 'Failed to connect to ML forecasting service',
-      error: error.message,
+    const movement = await tx.stockMovement.create({
+      data: { ...body, quantity: body.quantity, performedBy: req.user!.userId },
     });
+    const level = await tx.stockLevel.findUniqueOrThrow({
+      where: { productId_warehouseId: { productId: body.productId, warehouseId: body.warehouseId } },
+    });
+    // Alert when this movement takes the level across the reorder threshold.
+    const crossed = delta < 0 && level.quantity <= product.reorderLevel && level.quantity - delta > product.reorderLevel;
+    return { movement, stockLevel: level, lowStockAlert: crossed ? product : null };
+  });
+
+  const { lowStockAlert, ...data } = result;
+  if (lowStockAlert) {
+    await notifyRoles(ROLES.INVENTORY, 'alert', `Low stock: ${lowStockAlert.sku}`,
+      `${lowStockAlert.name} is at ${data.stockLevel.quantity} (reorder level ${lowStockAlert.reorderLevel})`);
   }
-}
+  return created(res, data, 'Stock movement recorded');
+});
+
+// ── Warehouses ────────────────────────────────────────────────────────────────
+
+export const listWarehouses = endpoint({ query: noInput }, async (_input, _req, res) => {
+  const warehouses = await prisma.warehouse.findMany({ orderBy: { name: 'asc' } });
+  return ok(res, warehouses, 'Warehouses retrieved');
+});
+
+// ── AI demand forecast (proxy to ml-service) ──────────────────────────────────
+// The API sends the real per-SKU daily OUT history (last HISTORY_DAYS days) and
+// current stock; the ml-service fits a model and returns predictions.
+
+const HISTORY_DAYS = 180;
+const MAX_SKUS = 20;
+
+const forecastBody = z.object({
+  skus: z.array(z.string().trim().min(1).max(64)).max(MAX_SKUS).optional(),
+  horizonDays: z.number().int().min(7).max(90).default(30),
+}).strict();
+
+const mlResponse = z.object({
+  jobId: z.string(),
+  status: z.enum(['Processing', 'Completed', 'Failed']),
+  cached: z.boolean().optional(),
+  predictions: z.array(z.object({ sku: z.string() }).passthrough()),
+}).passthrough();
+
+export const getAiForecast = endpoint({ body: forecastBody }, async ({ body }, _req, res) => {
+  if (!env.ML_INTERNAL_TOKEN) throw new HttpError(503, 'Forecasting service is not configured');
+
+  const products = await prisma.product.findMany({
+    where: { isActive: true, ...(body.skus && { sku: { in: body.skus } }) },
+    orderBy: { sku: 'asc' },
+    take: MAX_SKUS,
+    select: { id: true, sku: true, name: true, reorderLevel: true, stockLevels: { select: { quantity: true } } },
+  });
+  if (products.length === 0) {
+    const empty: AIForecastResponse = { jobId: randomUUID(), status: 'Completed', predictions: [] };
+    return ok(res, empty, 'No products to forecast');
+  }
+
+  const since = new Date(Date.now() - HISTORY_DAYS * 24 * 60 * 60 * 1000);
+  const rows = await prisma.$queryRaw<{ product_id: string; day: Date; qty: bigint }[]>`
+    SELECT "product_id", date_trunc('day', "created_at") AS day, SUM("quantity")::bigint AS qty
+    FROM "stock_movements"
+    WHERE "type" = 'OUT' AND "created_at" >= ${since}
+      AND "product_id" IN (${Prisma.join(products.map((p) => p.id))})
+    GROUP BY 1, 2
+    ORDER BY 2`;
+
+  const items = products.map((p) => ({
+    sku: p.sku,
+    name: p.name,
+    currentStock: p.stockLevels.reduce((s, l) => s + l.quantity, 0),
+    safetyStock: p.reorderLevel,
+    history: rows
+      .filter((r) => r.product_id === p.id)
+      .map((r) => ({ date: r.day.toISOString().slice(0, 10), quantity: Number(r.qty) })),
+  }));
+
+  let response: Response;
+  try {
+    response = await fetch(`${env.ML_SERVICE_URL}/api/v1/forecast/demand`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Internal-Token': env.ML_INTERNAL_TOKEN },
+      body: JSON.stringify({ horizonDays: body.horizonDays, items }),
+      signal: AbortSignal.timeout(env.ML_TIMEOUT_MS),
+    });
+  } catch (err) {
+    const timedOut = (err as Error).name === 'TimeoutError';
+    logger.error('ML service request failed', { error: (err as Error).message, timedOut });
+    throw new HttpError(timedOut ? 504 : 502, timedOut ? 'Forecasting service timed out' : 'Forecasting service is unavailable');
+  }
+  if (!response.ok) {
+    logger.error('ML service error', { status: response.status });
+    throw new HttpError(502, 'Forecasting service returned an error');
+  }
+
+  const parsed = mlResponse.safeParse(await response.json().catch(() => null));
+  if (!parsed.success) {
+    logger.error('ML service returned an unexpected payload');
+    throw new HttpError(502, 'Forecasting service returned an invalid response');
+  }
+  return ok(res, parsed.data as unknown as AIForecastResponse, 'Forecast generated');
+});

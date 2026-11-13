@@ -1,18 +1,17 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, type Prisma } from '@prisma/client';
+import { env } from '../config/env';
 
 declare global {
-  // prevent multiple instances in development (hot reload)
+  // Re-use one client across hot reloads in development
   var __prisma: PrismaClient | undefined;
 }
 
-export const prisma =
-  global.__prisma ??
-  new PrismaClient({
-    log: process.env.NODE_ENV === 'development'
-      ? ['query', 'warn', 'error']
-      : ['warn', 'error'],
-  });
+// Query logging is off by default (it is noisy and logs parameters);
+// set PRISMA_LOG_QUERIES=true to enable it.
+const log: Prisma.LogLevel[] = env.PRISMA_LOG_QUERIES ? ['query', 'warn', 'error'] : ['warn', 'error'];
 
-if (process.env.NODE_ENV !== 'production') {
+export const prisma = global.__prisma ?? new PrismaClient({ log });
+
+if (!env.isProd) {
   global.__prisma = prisma;
 }

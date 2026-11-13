@@ -12,7 +12,10 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo check-types",
     "test": "turbo test",
-    "clean": "turbo clean"
+    "clean": "turbo clean",
+    "load-test": "k6 run k6-load-test.js",
+    "infra:up": "docker compose up -d",
+    "stack:up": "docker compose --profile app up -d --build"
   },
   "devDependencies": {
     "prettier": "^3.2.5",
@@ -21,7 +24,7 @@
   },
   "msw": {
     "workerDirectory": [
-      "apps\\web\\public"
+      "apps/web/public"
     ]
   }
 }

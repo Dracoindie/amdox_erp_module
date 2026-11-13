@@ -1,210 +1,125 @@
-import { Request, Response } from 'express';
+import type { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
-import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt';
-import { ok, badRequest, unauthorized, unprocessable } from '../utils/response';
+import { env } from '../config/env';
+import { signAccessToken } from '../utils/jwt';
+import { ok } from '../utils/response';
+import { HttpError } from '../utils/httpError';
 import { logger } from '../utils/logger';
+import { endpoint, noInput } from '../middleware/validate';
+import { createSession, rotateSession, revokeSession } from '../services/session.service';
 
-// ── Validation Schemas ────────────────────────────────────────────────────────
+export const REFRESH_COOKIE = 'amx_rt';
+
+// The refresh cookie is only ever sent to the auth routes.
+function refreshCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: env.cookieSecure,
+    sameSite: 'strict' as const,
+    path: '/api/v1/auth',
+    maxAge: env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000,
+  };
+}
+
+function clientInfo(req: Request) {
+  return { ip: req.ip, userAgent: req.get('user-agent') };
+}
+
+function readRefreshCookie(req: Request): string | undefined {
+  const value = req.cookies?.[REFRESH_COOKIE];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+// Used when the e-mail is unknown, so a miss costs the same time as a hit.
+const DUMMY_HASH = bcrypt.hashSync('timing-equaliser', 10);
 
 const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(1, 'Password is required'),
-});
+  email: z.string().trim().toLowerCase().email('Invalid email address'),
+  password: z.string().min(1, 'Password is required').max(200),
+}).strict();
 
-const forgotSchema = z.object({
-  email: z.string().email(),
-});
-
-const resetSchema = z.object({
-  token: z.string().min(1),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
-});
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-const COOKIE_OPTS = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'strict' as const,
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-  path: '/',
-};
-
-// ── Controllers ───────────────────────────────────────────────────────────────
-
-/**
- * POST /api/v1/auth/login
- * Body: { email, password }
- * Returns: accessToken (body) + refreshToken (HttpOnly cookie)
- */
-export async function login(req: Request, res: Response) {
-  const parsed = loginSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return unprocessable(res, 'Validation failed', parsed.error.flatten());
+/** POST /api/v1/auth/login → { accessToken, user } + refresh cookie */
+export const login = endpoint({ body: loginSchema }, async ({ body }, req, res) => {
+  const user = await prisma.user.findUnique({ where: { email: body.email } });
+  const passwordOk = await bcrypt.compare(body.password, user?.passwordHash ?? DUMMY_HASH);
+  if (!user || !user.isActive || !passwordOk) {
+    throw new HttpError(401, 'Invalid email or password');
   }
 
-  const { email, password } = parsed.data;
+  // Opportunistic clean-up of this user's expired sessions
+  await prisma.session.deleteMany({ where: { userId: user.id, expiresAt: { lt: new Date() } } });
 
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user || !user.isActive) {
-    return unauthorized(res, 'Invalid email or password');
-  }
+  const refreshToken = await createSession(user.id, clientInfo(req));
+  const accessToken = signAccessToken({ userId: user.id, email: user.email, role: user.role });
 
-  const passwordMatch = await bcrypt.compare(password, user.passwordHash);
-  if (!passwordMatch) {
-    return unauthorized(res, 'Invalid email or password');
-  }
-
-  const payload = { userId: user.id, email: user.email, role: user.role };
-  const accessToken  = signAccessToken(payload);
-  const refreshToken = signRefreshToken(payload);
-
-  // Store hashed refresh token in DB
-  const tokenHash = await bcrypt.hash(refreshToken, 10);
-  await prisma.session.create({
-    data: {
-      userId: user.id,
-      refreshTokenHash: tokenHash,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      ip: req.ip,
-      userAgent: req.headers['user-agent'],
-    },
-  });
-
-  // Audit log
   await prisma.auditLog.create({
     data: { userId: user.id, action: 'LOGIN', entity: 'User', entityId: user.id, ip: req.ip },
   });
+  logger.info('User logged in', { userId: user.id });
 
-  logger.info(`User logged in: ${email}`);
+  res.cookie(REFRESH_COOKIE, refreshToken, refreshCookieOptions());
+  return ok(res, { accessToken, user: { id: user.id, email: user.email, role: user.role } }, 'Login successful');
+});
 
-  res.cookie('refreshToken', refreshToken, COOKIE_OPTS);
+/** POST /api/v1/auth/refresh → rotates the refresh cookie, returns a new access token */
+export const refresh = endpoint({ body: noInput }, async (_input, req, res) => {
+  const token = readRefreshCookie(req);
+  if (!token) throw new HttpError(401, 'No refresh token provided');
 
-  return ok(res, {
-    accessToken,
-    user: { id: user.id, email: user.email, role: user.role },
-  }, 'Login successful');
-}
-
-/**
- * POST /api/v1/auth/logout
- * Clears refresh token cookie and invalidates session in DB
- */
-export async function logout(req: Request, res: Response) {
-  const refreshToken = req.cookies?.refreshToken as string | undefined;
-
-  if (refreshToken) {
-    // Find and delete matching session (brute-force compare — limited sessions per user)
-    const sessions = await prisma.session.findMany({
-      where: { userId: req.user?.userId ?? '', expiresAt: { gt: new Date() } },
-    });
-
-    for (const session of sessions) {
-      const match = await bcrypt.compare(refreshToken, session.refreshTokenHash);
-      if (match) {
-        await prisma.session.delete({ where: { id: session.id } });
-        break;
-      }
-    }
-  }
-
-  res.clearCookie('refreshToken', { path: '/', httpOnly: true });
-
-  if (req.user) {
-    await prisma.auditLog.create({
-      data: { userId: req.user.userId, action: 'LOGOUT', entity: 'User', entityId: req.user.userId, ip: req.ip },
-    });
-  }
-
-  return ok(res, null, 'Logged out successfully');
-}
-
-/**
- * POST /api/v1/auth/refresh
- * Uses HttpOnly cookie to issue a new access token
- */
-export async function refresh(req: Request, res: Response) {
-  const refreshToken = req.cookies?.refreshToken as string | undefined;
-
-  if (!refreshToken) {
-    return unauthorized(res, 'No refresh token provided');
-  }
-
-  let payload;
   try {
-    payload = verifyRefreshToken(refreshToken);
-  } catch {
-    return unauthorized(res, 'Refresh token expired or invalid');
+    const { token: next, user } = await rotateSession(token, clientInfo(req));
+    res.cookie(REFRESH_COOKIE, next, refreshCookieOptions());
+    const accessToken = signAccessToken({ userId: user.id, email: user.email, role: user.role });
+    return ok(res, { accessToken, user: { id: user.id, email: user.email, role: user.role } }, 'Token refreshed');
+  } catch (err) {
+    res.clearCookie(REFRESH_COOKIE, { ...refreshCookieOptions(), maxAge: undefined });
+    throw err;
   }
+});
 
-  // Verify against stored sessions
-  const sessions = await prisma.session.findMany({
-    where: { userId: payload.userId, expiresAt: { gt: new Date() } },
-  });
-
-  let validSession = null;
-  for (const session of sessions) {
-    const match = await bcrypt.compare(refreshToken, session.refreshTokenHash);
-    if (match) { validSession = session; break; }
+/** POST /api/v1/auth/logout → revokes only this browser's session */
+export const logout = endpoint({ body: noInput }, async (_input, req, res) => {
+  const token = readRefreshCookie(req);
+  const userId = token ? await revokeSession(token) : null;
+  res.clearCookie(REFRESH_COOKIE, { ...refreshCookieOptions(), maxAge: undefined });
+  if (userId) {
+    await prisma.auditLog.create({
+      data: { userId, action: 'LOGOUT', entity: 'User', entityId: userId, ip: req.ip },
+    });
   }
+  return ok(res, null, 'Logged out successfully');
+});
 
-  if (!validSession) {
-    return unauthorized(res, 'Session not found or revoked');
-  }
+/** POST /api/v1/auth/forgot-password — always 200 to prevent e-mail enumeration */
+export const forgotPassword = endpoint(
+  { body: z.object({ email: z.string().trim().toLowerCase().email() }).strict() },
+  async ({ body }, _req, res) => {
+    const user = await prisma.user.findUnique({ where: { email: body.email }, select: { id: true } });
+    if (user) logger.info('Password reset requested', { userId: user.id });
+    // E-mail delivery is not implemented yet (no mail provider configured).
+    return ok(res, null, 'If that email exists, a reset link has been sent');
+  },
+);
 
-  const accessToken = signAccessToken({
-    userId: payload.userId,
-    email: payload.email,
-    role: payload.role,
-  });
+/** POST /api/v1/auth/reset-password — not implemented (needs e-mail delivery) */
+export const resetPassword = endpoint(
+  { body: z.object({ token: z.string().min(1).max(500), password: z.string().min(8).max(200) }).strict() },
+  async () => {
+    throw new HttpError(501, 'Password reset is not available yet. Ask an administrator to reset your password.');
+  },
+);
 
-  return ok(res, { accessToken }, 'Token refreshed');
-}
-
-/**
- * POST /api/v1/auth/forgot-password
- * In production: send email with token. Here: returns token for dev use.
- */
-export async function forgotPassword(req: Request, res: Response) {
-  const parsed = forgotSchema.safeParse(req.body);
-  if (!parsed.success) return unprocessable(res, 'Invalid email');
-
-  const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
-
-  // Always return 200 to prevent email enumeration
-  if (!user) return ok(res, null, 'If that email exists, a reset link has been sent');
-
-  // TODO: generate reset token, store hash in DB, send email via Nodemailer
-  logger.info(`Password reset requested for: ${parsed.data.email}`);
-
-  return ok(res, null, 'If that email exists, a reset link has been sent');
-}
-
-/**
- * POST /api/v1/auth/reset-password
- */
-export async function resetPassword(req: Request, res: Response) {
-  const parsed = resetSchema.safeParse(req.body);
-  if (!parsed.success) return unprocessable(res, 'Validation failed', parsed.error.flatten());
-
-  // TODO: validate reset token from DB, update password hash
-  return badRequest(res, 'Password reset via token not yet implemented — use seed script');
-}
-
-/**
- * GET /api/v1/auth/me
- * Returns the currently authenticated user's profile
- */
-export async function me(req: Request, res: Response) {
-  if (!req.user) return unauthorized(res);
-
+/** GET /api/v1/auth/me */
+export const me = endpoint({ query: noInput }, async (_input, req: Request, res: Response) => {
   const user = await prisma.user.findUnique({
-    where: { id: req.user.userId },
-    select: { id: true, email: true, role: true, isActive: true, createdAt: true },
+    where: { id: req.user!.userId },
+    select: {
+      id: true, email: true, role: true, isActive: true, createdAt: true,
+      employee: { select: { id: true, name: true } },
+    },
   });
-
-  if (!user) return unauthorized(res, 'User not found');
+  if (!user || !user.isActive) throw new HttpError(401, 'User not found or disabled');
   return ok(res, user);
-}
+});

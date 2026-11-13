@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amdox-erp-api
+  namespace: amdox-production
+  labels: { app: amdox-erp-api }
+spec:
+  # Rate limits use an in-memory store, so each replica limits independently.
+  replicas: 2
+  selector:
+    matchLabels: { app: amdox-erp-api }
+  template:
+    metadata:
+      labels: { app: amdox-erp-api }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile: { type: RuntimeDefault }
+      initContainers:
+        # Applies pending Prisma migrations before the new version starts.
+        - name: migrate
+          image: amdox-erp-suite/api:0.2.0
+          command: ["./node_modules/.bin/prisma", "migrate", "deploy"]
+          envFrom:
+            - secretRef: { name: amdox-erp-secrets }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+      containers:
+        - name: api
+          image: amdox-erp-suite/api:0.2.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 4000 }
+          envFrom:
+            - configMapRef: { name: amdox-erp-config }
+            - secretRef: { name: amdox-erp-secrets }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+          resources:
+            requests: { cpu: 250m, memory: 256Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 15
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet: { path: /health/ready, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: amdox-erp-api
+  namespace: amdox-production
+spec:
+  type: ClusterIP
+  selector: { app: amdox-erp-api }
+  ports:
+    - { name: http, port: 80, targetPort: http }

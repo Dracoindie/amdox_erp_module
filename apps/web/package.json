@@ -15,14 +15,12 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@repo/types": "workspace:*",
-    "@repo/ui": "workspace:*",
     "axios": "^1.16.0",
     "lucide-react": "^1.14.0",
     "next": "16.2.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "recharts": "^2.12.0",
-    "zustand": "^4.5.0"
+    "recharts": "^2.12.0"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",

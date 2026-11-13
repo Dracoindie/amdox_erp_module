@@ -92,6 +92,13 @@ enum JournalEntryStatus {
   VOID
 }
 
+enum SalesOrderStatus {
+  DRAFT
+  CONFIRMED
+  FULFILLED
+  CANCELLED
+}
+
 // ─── Identity & Auth ─────────────────────────────────────────────────────────
 
 model User {
@@ -103,24 +110,31 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  employee    Employee?
-  sessions    Session[]
-  auditLogs   AuditLog[]
+  employee      Employee?
+  sessions      Session[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
 
   @@map("users")
 }
 
 model Session {
-  id               String   @id @default(uuid())
-  userId           String   @map("user_id")
-  refreshTokenHash String   @map("refresh_token_hash")
-  expiresAt        DateTime @map("expires_at")
-  ip               String?
-  userAgent        String?  @map("user_agent")
-  createdAt        DateTime @default(now()) @map("created_at")
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  familyId  String    @map("family_id")
+  tokenHash String    @unique @map("token_hash") // SHA-256 of the refresh token
+  expiresAt DateTime  @map("expires_at")
+  rotatedAt DateTime? @map("rotated_at") // set when exchanged for a new token
+  revokedAt DateTime? @map("revoked_at") // set on logout or reuse detection
+  ip        String?
+  userAgent String?   @map("user_agent")
+  createdAt DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
   @@map("sessions")
 }
 
@@ -132,9 +146,10 @@ model Department {
   createdAt DateTime @default(now()) @map("created_at")
 
   employees Employee[]
-  manager   Employee? @relation("DepartmentManager", fields: [managerId], references: [id])
-  managerId String?   @map("manager_id")
+  manager   Employee?  @relation("DepartmentManager", fields: [managerId], references: [id])
+  managerId String?    @map("manager_id")
 
+  @@index([managerId])
   @@map("departments")
 }
 
@@ -146,49 +161,54 @@ model Employee {
   phone        String?
   departmentId String?        @map("department_id")
   designation  String?
-  grossSalary  Float          @map("gross_salary")
+  grossSalary  Decimal        @map("gross_salary") @db.Decimal(14, 2)
   joinDate     DateTime       @map("join_date")
   status       EmployeeStatus @default(ACTIVE)
   isArchived   Boolean        @default(false) @map("is_archived")
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
 
-  user            User?           @relation(fields: [userId], references: [id])
-  department      Department?     @relation(fields: [departmentId], references: [id])
-  managedDepts    Department[]    @relation("DepartmentManager")
-  attendances     Attendance[]
-  leaveRequests   LeaveRequest[]
-  payslips        Payslip[]
+  user          User?          @relation(fields: [userId], references: [id])
+  department    Department?    @relation(fields: [departmentId], references: [id])
+  managedDepts  Department[]   @relation("DepartmentManager")
+  attendances   Attendance[]
+  leaveRequests LeaveRequest[]
+  payslips      Payslip[]
 
+  @@index([departmentId])
+  @@index([status, isArchived])
   @@map("employees")
 }
 
 model Attendance {
-  id         String    @id @default(uuid())
-  employeeId String    @map("employee_id")
-  clockIn    DateTime  @map("clock_in")
-  clockOut   DateTime? @map("clock_out")
-  date       DateTime  @db.Date
-  hoursWorked Float?   @map("hours_worked")
+  id          String    @id @default(uuid())
+  employeeId  String    @map("employee_id")
+  clockIn     DateTime  @map("clock_in")
+  clockOut    DateTime? @map("clock_out")
+  date        DateTime  @db.Date
+  hoursWorked Float?    @map("hours_worked")
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
+  @@index([employeeId, date])
   @@map("attendance")
 }
 
 model LeaveRequest {
-  id          String      @id @default(uuid())
-  employeeId  String      @map("employee_id")
-  type        LeaveType
-  fromDate    DateTime    @map("from_date") @db.Date
-  toDate      DateTime    @map("to_date") @db.Date
-  reason      String?
-  status      LeaveStatus @default(PENDING)
-  approvedBy  String?     @map("approved_by")
-  createdAt   DateTime    @default(now()) @map("created_at")
+  id         String      @id @default(uuid())
+  employeeId String      @map("employee_id")
+  type       LeaveType
+  fromDate   DateTime    @map("from_date") @db.Date
+  toDate     DateTime    @map("to_date") @db.Date
+  reason     String?
+  status     LeaveStatus @default(PENDING)
+  approvedBy String?     @map("approved_by")
+  createdAt  DateTime    @default(now()) @map("created_at")
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
+  @@index([employeeId])
+  @@index([status])
   @@map("leave_requests")
 }
 
@@ -198,44 +218,47 @@ model PayrollRun {
   periodEnd   DateTime      @map("period_end") @db.Date
   status      PayrollStatus @default(DRAFT)
   runBy       String        @map("run_by")
-  totalGross  Float         @map("total_gross")
-  totalTaxes  Float         @map("total_taxes")
-  totalNet    Float         @map("total_net")
+  totalGross  Decimal       @map("total_gross") @db.Decimal(14, 2)
+  totalTaxes  Decimal       @map("total_taxes") @db.Decimal(14, 2)
+  totalNet    Decimal       @map("total_net") @db.Decimal(14, 2)
   createdAt   DateTime      @default(now()) @map("created_at")
 
   payslips Payslip[]
 
+  @@unique([periodStart, periodEnd])
   @@map("payroll_runs")
 }
 
 model Payslip {
-  id          String   @id @default(uuid())
-  payrollRunId String  @map("payroll_run_id")
-  employeeId  String   @map("employee_id")
-  gross       Float
-  taxes       Float
-  insurance   Float
-  net         Float
-  pdfUrl      String?  @map("pdf_url")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id           String   @id @default(uuid())
+  payrollRunId String   @map("payroll_run_id")
+  employeeId   String   @map("employee_id")
+  gross        Decimal  @db.Decimal(14, 2)
+  taxes        Decimal  @db.Decimal(14, 2)
+  insurance    Decimal  @db.Decimal(14, 2)
+  net          Decimal  @db.Decimal(14, 2)
+  pdfUrl       String?  @map("pdf_url")
+  createdAt    DateTime @default(now()) @map("created_at")
 
   payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id])
   employee   Employee   @relation(fields: [employeeId], references: [id])
 
+  @@unique([payrollRunId, employeeId])
+  @@index([employeeId])
   @@map("payslips")
 }
 
 // ─── Inventory / SCM ─────────────────────────────────────────────────────────
 
 model Product {
-  id            String  @id @default(uuid())
-  sku           String  @unique
-  name          String
-  category      String?
-  unitPrice     Float   @map("unit_price")
-  reorderLevel  Int     @default(10) @map("reorder_level")
-  unit          String  @default("piece")
-  isActive      Boolean @default(true) @map("is_active")
+  id           String  @id @default(uuid())
+  sku          String  @unique
+  name         String
+  category     String?
+  unitPrice    Decimal @map("unit_price") @db.Decimal(14, 2)
+  reorderLevel Int     @default(10) @map("reorder_level")
+  unit         String  @default("piece")
+  isActive     Boolean @default(true) @map("is_active")
 
   stockLevels    StockLevel[]
   stockMovements StockMovement[]
@@ -244,11 +267,12 @@ model Product {
 }
 
 model Warehouse {
-  id        String @id @default(uuid())
-  name      String
-  location  String?
+  id       String  @id @default(uuid())
+  name     String
+  location String?
 
-  stockLevels StockLevel[]
+  stockLevels    StockLevel[]
+  stockMovements StockMovement[]
 
   @@map("warehouses")
 }
@@ -264,12 +288,14 @@ model StockLevel {
   warehouse Warehouse @relation(fields: [warehouseId], references: [id])
 
   @@unique([productId, warehouseId])
+  @@index([warehouseId])
   @@map("stock_levels")
 }
 
 model StockMovement {
   id          String            @id @default(uuid())
   productId   String            @map("product_id")
+  warehouseId String            @map("warehouse_id")
   type        StockMovementType
   quantity    Int
   refId       String?           @map("ref_id")
@@ -278,18 +304,21 @@ model StockMovement {
   performedBy String?           @map("performed_by")
   createdAt   DateTime          @default(now()) @map("created_at")
 
-  product Product @relation(fields: [productId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
 
+  @@index([productId, createdAt])
+  @@index([warehouseId])
   @@map("stock_movements")
 }
 
 model Supplier {
-  id             String @id @default(uuid())
-  name           String
-  email          String?
-  phone          String?
-  leadTimeDays   Int?   @map("lead_time_days")
-  paymentTerms   String? @map("payment_terms")
+  id           String  @id @default(uuid())
+  name         String
+  email        String?
+  phone        String?
+  leadTimeDays Int?    @map("lead_time_days")
+  paymentTerms String? @map("payment_terms")
 
   purchaseOrders PurchaseOrder[]
 
@@ -301,9 +330,9 @@ model PurchaseOrder {
   supplierId  String              @map("supplier_id")
   status      PurchaseOrderStatus @default(DRAFT)
   description String?
-  subtotal    Float               @default(0)
-  tax         Float               @default(0)
-  total       Float               @default(0)
+  subtotal    Decimal             @default(0) @db.Decimal(14, 2)
+  tax         Decimal             @default(0) @db.Decimal(14, 2)
+  total       Decimal             @default(0) @db.Decimal(14, 2)
   createdBy   String              @map("created_by")
   approvedBy  String?             @map("approved_by")
   createdAt   DateTime            @default(now()) @map("created_at")
@@ -311,6 +340,8 @@ model PurchaseOrder {
 
   supplier Supplier @relation(fields: [supplierId], references: [id])
 
+  @@index([supplierId])
+  @@index([createdAt])
   @@map("purchase_orders")
 }
 
@@ -320,7 +351,7 @@ model Account {
   id       String  @id @default(uuid())
   code     String  @unique
   name     String
-  type     String  // asset | liability | equity | income | expense
+  type     String // asset | liability | equity | income | expense
   isActive Boolean @default(true) @map("is_active")
 
   journalLines JournalLine[]
@@ -334,26 +365,29 @@ model JournalEntry {
   description String
   status      JournalEntryStatus @default(PENDING)
   createdBy   String             @map("created_by")
-  totalDebit  Float              @map("total_debit")
-  totalCredit Float              @map("total_credit")
+  totalDebit  Decimal            @map("total_debit") @db.Decimal(14, 2)
+  totalCredit Decimal            @map("total_credit") @db.Decimal(14, 2)
   createdAt   DateTime           @default(now()) @map("created_at")
 
   lines JournalLine[]
 
+  @@index([date])
   @@map("journal_entries")
 }
 
 model JournalLine {
-  id       String @id @default(uuid())
-  entryId  String @map("entry_id")
-  accountId String @map("account_id")
-  debit    Float  @default(0)
-  credit   Float  @default(0)
-  memo     String?
+  id        String  @id @default(uuid())
+  entryId   String  @map("entry_id")
+  accountId String  @map("account_id")
+  debit     Decimal @default(0) @db.Decimal(14, 2)
+  credit    Decimal @default(0) @db.Decimal(14, 2)
+  memo      String?
 
   entry   JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
   account Account      @relation(fields: [accountId], references: [id])
 
+  @@index([entryId])
+  @@index([accountId])
   @@map("journal_lines")
 }
 
@@ -361,9 +395,9 @@ model Invoice {
   id         String        @id @default(uuid())
   customerId String        @map("customer_id")
   number     String        @unique
-  subtotal   Float         @default(0)
-  tax        Float         @default(0)
-  total      Float         @default(0)
+  subtotal   Decimal       @default(0) @db.Decimal(14, 2)
+  tax        Decimal       @default(0) @db.Decimal(14, 2)
+  total      Decimal       @default(0) @db.Decimal(14, 2)
   status     InvoiceStatus @default(DRAFT)
   dueDate    DateTime?     @map("due_date") @db.Date
   pdfUrl     String?       @map("pdf_url")
@@ -372,13 +406,15 @@ model Invoice {
 
   customer Customer @relation(fields: [customerId], references: [id])
 
+  @@index([customerId, status])
+  @@index([createdAt])
   @@map("invoices")
 }
 
 model Expense {
   id          String        @id @default(uuid())
   category    String
-  amount      Float
+  amount      Decimal       @db.Decimal(14, 2)
   description String?
   status      ExpenseStatus @default(SUBMITTED)
   submittedBy String        @map("submitted_by")
@@ -386,7 +422,25 @@ model Expense {
   receiptUrl  String?       @map("receipt_url")
   createdAt   DateTime      @default(now()) @map("created_at")
 
+  @@index([submittedBy])
+  @@index([createdAt])
+  @@index([category])
   @@map("expenses")
+}
+
+// Monthly spending budget per expense category
+model Budget {
+  id        String   @id @default(uuid())
+  category  String
+  year      Int
+  month     Int // 1-12
+  amount    Decimal  @db.Decimal(14, 2)
+  updatedBy String?  @map("updated_by")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([category, year, month])
+  @@index([year, month])
+  @@map("budgets")
 }
 
 // ─── CRM ─────────────────────────────────────────────────────────────────────
@@ -404,36 +458,57 @@ model Customer {
   leads        Lead[]
   interactions Interaction[]
   invoices     Invoice[]
+  salesOrders  SalesOrder[]
 
   @@map("customers")
 }
 
 model Lead {
-  id              String    @id @default(uuid())
-  customerId      String    @map("customer_id")
-  stage           LeadStage @default(PROSPECT)
-  value           Float     @default(0)
-  expectedClose   DateTime? @map("expected_close") @db.Date
-  assignedTo      String?   @map("assigned_to")
-  notes           String?
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id            String    @id @default(uuid())
+  customerId    String    @map("customer_id")
+  stage         LeadStage @default(PROSPECT)
+  value         Decimal   @default(0) @db.Decimal(14, 2)
+  expectedClose DateTime? @map("expected_close") @db.Date
+  assignedTo    String?   @map("assigned_to")
+  notes         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
+  @@index([customerId, stage])
   @@map("leads")
+}
+
+model SalesOrder {
+  id          String           @id @default(uuid())
+  number      String           @unique
+  customerId  String           @map("customer_id")
+  description String?
+  total       Decimal          @db.Decimal(14, 2)
+  status      SalesOrderStatus @default(DRAFT)
+  createdBy   String           @map("created_by")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([customerId, status])
+  @@index([createdAt])
+  @@map("sales_orders")
 }
 
 model Interaction {
   id          String   @id @default(uuid())
   customerId  String   @map("customer_id")
-  type        String   // call | email | meeting | note
+  type        String // call | email | meeting | note
   note        String?
   performedBy String   @map("performed_by")
   createdAt   DateTime @default(now()) @map("created_at")
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
+  @@index([customerId])
   @@map("interactions")
 }
 
@@ -448,6 +523,9 @@ model Notification {
   isRead    Boolean  @default(false) @map("is_read")
   createdAt DateTime @default(now()) @map("created_at")
 
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
   @@map("notifications")
 }
 
@@ -463,5 +541,16 @@ model AuditLog {
 
   user User @relation(fields: [userId], references: [id])
 
+  @@index([userId, timestamp])
+  @@index([timestamp])
   @@map("audit_logs")
+}
+
+// Atomic per-key counters (e.g. invoice numbers per year). Incremented with
+// INSERT ... ON CONFLICT DO UPDATE, so concurrent requests never get the same value.
+model Counter {
+  name  String @id
+  value Int    @default(0)
+
+  @@map("counters")
 }

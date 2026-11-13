@@ -1,0 +1,23 @@
+# Keep secrets, dependencies and build output out of every image build context.
+**/.env
+**/.env.*
+!**/.env.example
+
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+**/coverage
+**/__pycache__
+**/.pytest_cache
+**/.venv
+**/*.log
+**/logs
+
+.git
+.github
+.vercel
+k8s
+*.zip
+*.md
+!README.md

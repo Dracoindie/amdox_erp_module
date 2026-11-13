@@ -11,14 +11,20 @@ import {
   AlertCircle,
 } from 'lucide-react';
 
-import api from '../../lib/axios';
+import { login } from '../../lib/auth';
+import { apiErrorMessage } from '../../lib/axios';
+
+// Only same-origin paths are accepted as a post-login redirect.
+function safeNext(): string {
+  const next = new URLSearchParams(window.location.search).get('next');
+  return next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
+}
 
 export default function LoginPage() {
   const router = useRouter();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [tenant, setTenant] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -29,30 +35,10 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const { data } = await api.post('/auth/login', {
-        email,
-        password,
-      });
-
-      localStorage.setItem(
-        'amx_access_token',
-        data.data.accessToken
-      );
-
-      localStorage.setItem(
-        'amx_user',
-        JSON.stringify(data.data.user)
-      );
-
-      router.push('/');
-    } catch (err: any) {
-      if (err.response?.data?.message) {
-        setError(err.response.data.message);
-      } else {
-        setError(
-          'Cannot connect to API server. Make sure backend is running on port 4000.'
-        );
-      }
+      await login(email, password);
+      router.replace(safeNext());
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Login failed. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -97,19 +83,6 @@ export default function LoginPage() {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-5">
-
-          {/* Tenant */}
-          <div className="relative">
-            <Building2 className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-
-            <input
-              type="text"
-              placeholder="Organisation ID (optional)"
-              value={tenant}
-              onChange={(e) => setTenant(e.target.value)}
-              className={inputClass}
-            />
-          </div>
 
           {/* Email */}
           <div className="relative">

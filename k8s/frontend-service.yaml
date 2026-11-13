@@ -5,9 +5,6 @@ metadata:
   namespace: amdox-production
 spec:
   type: ClusterIP
-  selector:
-    app: amdox-erp-frontend
+  selector: { app: amdox-erp-frontend }
   ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 3000
+    - { name: http, port: 80, targetPort: http }
