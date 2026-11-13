@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ChevronRight, LogOut, Menu, Settings } from 'lucide-react';
 import { logout } from '../../../lib/auth';
 import { useAuthUser } from '../../../lib/useAuth';
-import { currentNav, TAB_LABELS } from '../../../lib/navigation';
+import { currentNav, forUser, TAB_LABELS } from '../../../lib/navigation';
 import { initials, roleLabel } from '../../../lib/format';
 import NotificationBell from '../../../components/NotificationBell';
 import ThemeToggle from '../../../components/ThemeToggle';
@@ -15,9 +15,12 @@ import { IconButton, cx } from '../../../components/ui';
 function Breadcrumbs() {
   const pathname = usePathname();
   const params = useSearchParams();
-  const nav = currentNav(pathname);
+  const user = useAuthUser();
+  const found = currentNav(pathname);
+  const nav = found && forUser(found, user);
   const tab = params.get('tab');
-  const tabLabel = nav && tab ? TAB_LABELS[nav.href]?.[tab] : undefined;
+  // Same label as the sidebar; no tab crumb when the user's page has a single section
+  const tabLabel = nav && tab && !(user && nav.singleSection?.(user)) ? TAB_LABELS[nav.href]?.[tab] : undefined;
   const crumbs = [
     ...(nav && nav.href !== '/' ? [{ label: nav.label, href: nav.href }] : [{ label: 'Dashboard', href: '/' }]),
     ...(tabLabel ? [{ label: tabLabel, href: `${nav!.href}?tab=${tab}` }] : []),

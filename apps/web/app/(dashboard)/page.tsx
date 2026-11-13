@@ -5,7 +5,7 @@ import { ArrowRight, Briefcase, CalendarDays, Clock, FileText, Package, Receipt,
 import type { DashboardOverview } from '@repo/types';
 import { useApi } from '../../lib/useApi';
 import { useAuthUser } from '../../lib/useAuth';
-import { NAV } from '../../lib/navigation';
+import { navFor } from '../../lib/navigation';
 import { auditPhrase, isCurrentMonth, money, moneyCompact, monthLabel, timeAgo, titleCase, toNumber } from '../../lib/format';
 import { BarList, ChartDataTable, ChartLegend, LineTrend, SLOT } from '../../components/charts';
 import { BlockSkeleton, Card, DataState, EmptyState, PageHeader, StatCard, StatsSkeleton } from '../../components/ui';
@@ -26,7 +26,7 @@ export default function DashboardPage() {
   const user = useAuthUser();
   const overview = useApi<DashboardOverview>('/bi/overview');
   const firstName = user?.employee?.name?.split(' ')[0];
-  const links = NAV.filter((n) => n.href !== '/' && (!n.visible || (user && n.visible(user))));
+  const links = navFor(user).filter((n) => n.href !== '/');
 
   return (
     <div className="space-y-6">

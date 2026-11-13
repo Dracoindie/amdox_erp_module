@@ -21,6 +21,10 @@ const ACCESS: Record<(typeof ROLES)[number], string[]> = {
   employee: ['/', '/finance', '/hr', '/settings'], //                 finance = own expense claims only
   viewer: PAGES,
 };
+// Roles that read only their own expense claims see Finance as "My expenses"
+const OWN_EXPENSES_ONLY = new Set(['hr', 'inventory', 'sales', 'employee']);
+const labelFor = (role: string, path: string) =>
+  path === '/finance' && OWN_EXPENSES_ONLY.has(role) ? 'My expenses' : LABEL[path]!;
 const ADMIN_PW = process.env.ADMIN_PASSWORD || 'Admin@1234';
 const DEMO_PW = process.env.DEMO_PASSWORD || 'Demo@1234';
 
@@ -62,7 +66,7 @@ for (const role of ROLES) {
 
     // Sidebar lists exactly the modules this role may read
     const nav = page.getByRole('navigation', { name: 'Main' });
-    await expect(nav.getByRole('link')).toHaveText(ACCESS[role].map((p) => LABEL[p]!), { timeout: 20_000 });
+    await expect(nav.getByRole('link')).toHaveText(ACCESS[role].map((p) => labelFor(role, p)), { timeout: 20_000 });
 
     for (const path of PAGES) {
       await page.goto(path);
@@ -72,6 +76,10 @@ for (const role of ROLES) {
         continue;
       }
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+      if (path !== '/') {
+        // Breadcrumb starts with the same label as the sidebar
+        await expect(page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('listitem').first()).toHaveText(labelFor(role, path));
+      }
       await expect(page.getByText("Couldn't load this data")).toHaveCount(0);
       await expect(page.getByText("You don't have access to this")).toHaveCount(0);
       await noOverflow(page);
@@ -131,6 +139,12 @@ test('employee submits an expense claim and sees it with its status; no approve 
   await settle(page);
   // Only their own claims: a "My expenses" page with no other finance tabs
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('My expenses');
+  // Sidebar and breadcrumb use the same name; no "Finance" or tab crumb
+  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'My expenses' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Finance' })).toHaveCount(0);
+  await page.goto('/finance?tab=expenses');
+  await settle(page);
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('listitem')).toHaveText(['My expenses']);
   await expect(page.getByRole('tab')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'My expense claims' })).toBeVisible();
   const note = `Smoke test claim ${Date.now()}`;

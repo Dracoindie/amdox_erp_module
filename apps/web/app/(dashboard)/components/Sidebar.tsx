@@ -5,14 +5,14 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { X } from 'lucide-react';
 import { useAuthUser } from '../../../lib/useAuth';
-import { NAV, isActive } from '../../../lib/navigation';
+import { isActive, navFor } from '../../../lib/navigation';
 import { Logo } from '../../../components/Logo';
 import { IconButton, cx } from '../../../components/ui';
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const user = useAuthUser();
-  const items = NAV.filter((n) => !n.visible || (user && n.visible(user)));
+  const items = navFor(user);
   return (
     <nav aria-label="Main" className="flex-1 overflow-y-auto px-3 py-4">
       <ul className="space-y-0.5">

@@ -47,6 +47,9 @@ export function canRead(user: AuthUser | null | undefined, group: ReadGroup): bo
 /** Self-service HR (own leave, attendance, payslips) needs a linked employee record */
 export const hasSelfService = (user: AuthUser | null | undefined) => !!user?.employee && can(user, 'STAFF');
 
+/** Reads expense claims but not the books: sees only their own claims ("My expenses") */
+export const ownExpensesOnly = (user: AuthUser | null | undefined) => canRead(user, 'EXPENSES') && !canRead(user, 'FINANCE');
+
 /** Which top-level modules a user can open (drives the sidebar and page guards) */
 export const MODULE_ACCESS: Record<string, (u: AuthUser) => boolean> = {
   '/': () => true,
